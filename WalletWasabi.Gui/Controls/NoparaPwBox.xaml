@@ -1,0 +1,16 @@
+﻿<Styles xmlns="https://github.com/avaloniaui" 
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:controls="clr-namespace:WalletWasabi.Gui.Controls;assembly=WalletWasabi.Gui">
+  
+  <Style Selector="controls|NoparaPwBox">
+    <Setter Property="Template">
+      <ControlTemplate>
+        <StackPanel>
+          <TextBlock Text="Hello world"></TextBlock>
+          <TextBlock Text="Hello world2"></TextBlock>
+        </StackPanel>
+
+      </ControlTemplate>
+    </Setter>
+  </Style>
+</Styles>
