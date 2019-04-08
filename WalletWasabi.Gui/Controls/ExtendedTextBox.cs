@@ -150,8 +150,6 @@ namespace WalletWasabi.Gui.Controls
 
 		protected override void OnTemplateApplied(TemplateAppliedEventArgs e)
 		{
-			base.OnTemplateApplied(e);
-
 			ContextMenu = new ContextMenu
 			{
 				DataContext = this,
