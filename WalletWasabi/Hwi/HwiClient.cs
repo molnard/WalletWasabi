@@ -200,6 +200,8 @@ namespace WalletWasabi.Hwi
 				}).ConfigureAwait(false);
 
 			PSBT signedPsbt = HwiParser.ParsePsbt(response, Network);
+			File.WriteAllText(@"C:\temp\hex.txt", signedPsbt.ToHex());
+			File.WriteAllText(@"C:\temp\base64.txt", signedPsbt.ToBase64());
 
 			if (!signedPsbt.IsAllFinalized())
 			{

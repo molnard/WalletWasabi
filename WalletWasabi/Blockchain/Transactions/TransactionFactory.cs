@@ -365,22 +365,22 @@ namespace WalletWasabi.Blockchain.Transactions
 				}
 			}
 
-			foreach (var input in spentCoins)
-			{
-				var coinInputTxID = input.TransactionId;
-				if (Store.TransactionStore.TryGetTransaction(coinInputTxID, out var txn))
-				{
-					var psbtInputs = psbt.Inputs.Where(x => x.PrevOut.Hash == coinInputTxID);
-					foreach (var psbtInput in psbtInputs)
-					{
-						psbtInput.NonWitnessUtxo = txn.Transaction;
-					}
-				}
-				else
-				{
-					Logger.LogWarning($"Transaction id:{coinInputTxID} is missing from the TransactionStore. Ignoring...");
-				}
-			}
+			//foreach (var input in spentCoins)
+			//{
+			//	var coinInputTxID = input.TransactionId;
+			//	if (Store.TransactionStore.TryGetTransaction(coinInputTxID, out var txn))
+			//	{
+			//		var psbtInputs = psbt.Inputs.Where(x => x.PrevOut.Hash == coinInputTxID);
+			//		foreach (var psbtInput in psbtInputs)
+			//		{
+			//			psbtInput.NonWitnessUtxo = txn.Transaction;
+			//		}
+			//	}
+			//	else
+			//	{
+			//		Logger.LogWarning($"Transaction id:{coinInputTxID} is missing from the TransactionStore. Ignoring...");
+			//	}
+			//}
 		}
 	}
 }
