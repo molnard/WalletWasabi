@@ -146,6 +146,7 @@ namespace WalletWasabi.Gui
 
 				var blocksFolderPath = Path.Combine(DataDir, $"Blocks{Network}");
 				var userAgent = Constants.UserAgents.RandomElement();
+
 				var connectionParameters = new NodeConnectionParameters { UserAgent = userAgent };
 
 				if (Config.UseTor)
