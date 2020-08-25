@@ -120,7 +120,7 @@ namespace WalletWasabi.Gui
 		private CancellationTokenSource StoppingCts { get; }
 
 		private SingleInstanceChecker SingleInstanceChecker { get; } 
-		public CrashReporter CrashReporter { get; }
+		public CrashReporter CrashReporter { get; } 
 
 		public async Task InitializeNoWalletAsync()
 		{
