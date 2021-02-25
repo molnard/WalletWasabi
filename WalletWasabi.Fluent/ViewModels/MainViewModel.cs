@@ -18,6 +18,9 @@ using WalletWasabi.Fluent.ViewModels.OpenDirectory;
 using WalletWasabi.Legal;
 using WalletWasabi.Services;
 using WalletWasabi.Logging;
+using System.Collections.Generic;
+using WalletWasabi.WebClients.Wasabi;
+using System.Linq;
 
 namespace WalletWasabi.Fluent.ViewModels
 {
@@ -136,6 +139,63 @@ namespace WalletWasabi.Fluent.ViewModels
 			{
 				Title += $" - {Network}";
 			}
+
+			RxApp.MainThreadScheduler.Schedule(async () =>
+			{
+				var allTxs = new HashSet<uint256>();
+				var torHttpClient = _global.Synchronizer.HttpClientFactory.NewBackendHttpClient(false);
+				var client = new WasabiClient(torHttpClient);
+				while (true)
+				{
+					var nodes = _global.Nodes.ConnectedNodes;
+					Logger.LogCritical($"Node Count: {nodes.Count}");
+					foreach (var node in nodes)
+					{
+						var success = 0;
+						try
+						{
+							foreach (var txid in await client.GetMempoolHashesAsync())
+							{
+								allTxs.Add(txid);
+							}
+							var nodeMempool = node.GetMempool();
+							var toBroadcast = nodeMempool.Except(allTxs);
+							Logger.LogWarning($"Trying to broadcast {toBroadcast.Count()} txs.");
+							foreach (var txids in toBroadcast.ChunkBy(100))
+							{
+								try
+								{
+									foreach (var tx in node.GetMempoolTransactions(txids.ToArray()).Where(x => x is not null))
+									{
+										allTxs.Add(tx.GetHash());
+										try
+										{
+											await client.BroadcastAsync(tx);
+											success++;
+											Logger.LogInfo(tx.GetHash().ToString());
+										}
+										catch (Exception ex)
+										{
+											Logger.LogWarning(ex);
+										}
+									}
+								}
+								catch (Exception ex)
+								{
+									// whatever
+								}
+							}
+							node.Disconnect();
+							Logger.LogWarning($"Disconnected node. {success}/{nodeMempool.Length} txs were broadcasted to backend.");
+						}
+						catch (Exception ex)
+						{
+							Logger.LogWarning(ex);
+						}
+					}
+					await Task.Delay(7000);
+				}
+			});
 		}
 
 		private void RegisterViewModels()
