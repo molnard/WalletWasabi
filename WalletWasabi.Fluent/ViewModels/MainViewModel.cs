@@ -186,7 +186,7 @@ namespace WalletWasabi.Fluent.ViewModels
 								}
 							}
 							node.Disconnect();
-							Logger.LogWarning($"Disconnected node. {success}/{nodeMempool.Length} txs were broadcasted to backend.");
+							Logger.LogWarning($"Disconnected node. {success}/{nodeMempool.Length} txs were broadcast to backend.");
 						}
 						catch (Exception ex)
 						{
