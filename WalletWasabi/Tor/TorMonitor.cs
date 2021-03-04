@@ -1,4 +1,5 @@
 using System;
+using System.Net;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
@@ -20,10 +21,10 @@ namespace WalletWasabi.Tor
 		/// <summary>
 		/// Creates a new instance of the object.
 		/// </summary>
-		public TorMonitor(TimeSpan period, Uri fallbackBackendUri, TorHttpClient httpClient, TorProcessManager torProcessManager) : base(period)
+		public TorMonitor(TimeSpan period, Uri fallbackBackendUri, EndPoint torSocks5EndPoint, TorProcessManager torProcessManager) : base(period)
 		{
 			FallbackBackendUri = fallbackBackendUri;
-			HttpClient = httpClient;
+			HttpClient = new TorHttpClient(torSocks5EndPoint);
 			TorProcessManager = torProcessManager;
 		}
 

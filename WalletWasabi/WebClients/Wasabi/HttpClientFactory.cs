@@ -85,19 +85,6 @@ namespace WalletWasabi.WebClients.Wasabi
 			}
 		}
 
-		/// <summary>Creates new <see cref="TorHttpClient"/>.</summary>
-		/// <remarks>Do not use this function unless <see cref="NewHttpClient(Func{Uri}, bool)"/> is not sufficient for your use case.</remarks>
-		/// <exception cref="InvalidOperationException"/>
-		public TorHttpClient NewTorHttpClient(bool isolateStream, Func<Uri>? baseUriFn = null)
-		{
-			if (TorEndpoint is null)
-			{
-				throw new InvalidOperationException("Tor is not enabled in the user settings.");
-			}
-
-			return new TorHttpClient(baseUriFn, TorEndpoint, isolateStream);			
-		}
-
 		/// <summary>
 		/// Creates a new <see cref="IHttpClient"/> with the base URI is set to Wasabi Backend.
 		/// </summary>
