@@ -9,8 +9,6 @@ using System;
 using System.IO;
 using Newtonsoft.Json.Linq;
 using System.Linq;
-using WalletWasabi.Helpers;
-using WalletWasabi.Tests.Helpers;
 using WalletWasabi.BitcoinCore.Rpc;
 using Moq;
 
@@ -225,7 +223,8 @@ namespace WalletWasabi.Tests.UnitTests
 		[Fact]
 		public async Task ExhaustiveEstimationsAsync()
 		{
-			//var mockRpc = CreateAndConfigureRpcClient(hasPeersInfo: true);
+			Assert.True(false); // TODO: fix this test.
+								//var mockRpc = CreateAndConfigureRpcClient(hasPeersInfo: true);
 
 			//foreach (var i in Enumerable.Range(0, 1000))
 			//{
