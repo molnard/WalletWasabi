@@ -177,6 +177,8 @@ namespace WalletWasabi.Services
 								{
 									return;
 								}
+								await Task.Delay(10000).ConfigureAwait(false);
+								continue;
 
 								response = await WasabiClient.GetSynchronizeAsync(hashChain.TipHash, maxFiltersToSyncAtInitialization, estimateMode, StopCts.Token)
 									.WithAwaitCancellationAsync(StopCts.Token, 300)

@@ -8,6 +8,7 @@ using WalletWasabi.Blockchain.Keys;
 using WalletWasabi.Blockchain.TransactionOutputs;
 using WalletWasabi.Blockchain.Transactions;
 using WalletWasabi.Helpers;
+using WalletWasabi.Logging;
 using WalletWasabi.Models;
 
 namespace WalletWasabi.Blockchain.TransactionProcessing
@@ -53,12 +54,15 @@ namespace WalletWasabi.Blockchain.TransactionProcessing
 			{
 				try
 				{
-					QueuedTxCount = txs.Count();
 					foreach (var tx in txs)
 					{
-						rets.Add(ProcessNoLock(tx));
+						var ret = ProcessNoLock(tx);
+
+						rets.Add(ret);
 						QueuedProcessedTxCount++;
 					}
+
+					QueuedTxCount = txs.Count();
 				}
 				finally
 				{
@@ -71,6 +75,8 @@ namespace WalletWasabi.Blockchain.TransactionProcessing
 			{
 				WalletRelevantTransactionProcessed?.Invoke(this, ret);
 			}
+
+			Logger.LogInfo($"tx count:{rets.Count}");
 
 			return rets;
 		}
@@ -86,6 +92,7 @@ namespace WalletWasabi.Blockchain.TransactionProcessing
 				try
 				{
 					QueuedTxCount = 1;
+
 					ret = ProcessNoLock(tx);
 				}
 				finally
@@ -95,7 +102,7 @@ namespace WalletWasabi.Blockchain.TransactionProcessing
 			}
 			if (ret.IsNews)
 			{
-				WalletRelevantTransactionProcessed?.Invoke(this, ret);
+				//WalletRelevantTransactionProcessed?.Invoke(this, ret);
 			}
 			return ret;
 		}
@@ -190,6 +197,7 @@ namespace WalletWasabi.Blockchain.TransactionProcessing
 			{
 				// If transaction received to any of the wallet keys:
 				var output = tx.Transaction.Outputs[i];
+
 				HdPubKey foundKey = KeyManager.GetKeyForScriptPubKey(output.ScriptPubKey);
 				if (foundKey is { })
 				{

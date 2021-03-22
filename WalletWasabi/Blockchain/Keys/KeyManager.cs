@@ -54,6 +54,9 @@ namespace WalletWasabi.Blockchain.Keys
 			ToFile();
 		}
 
+		public Dictionary<Script, uint> InternalAddresses { get; } = new Dictionary<Script, uint>();
+		public Dictionary<Script, uint> ExternalAddresses { get; } = new Dictionary<Script, uint>();
+
 		public KeyManager(BitcoinEncryptedSecretNoEC encryptedSecret, byte[] chainCode, string password, int minGapLimit = AbsoluteMinGapLimit, string? filePath = null, KeyPath? accountKeyPath = null)
 		{
 			HdPubKeys = new List<HdPubKey>();
@@ -417,13 +420,47 @@ namespace WalletWasabi.Blockchain.Keys
 			}
 		}
 
+		private HdPubKey? LastFound { get; set; }
+
 		public HdPubKey GetKeyForScriptPubKey(Script scriptPubKey)
 		{
+			if ("0 fbabba99557612f00cb73bb4fdad477ce40b5bb3" == scriptPubKey.ToString())
+			{
+				Logger.LogInfo($"missing:{LastFound.P2wpkhScript}");
+			}
+
+			if (InternalAddresses.Count == 0)
+			{
+				for (int i = 0; i < 10000; i++)
+				{
+					InternalAddresses.Add(ExtPubKey.Derive(1, false).Derive(i, false).PubKey.WitHash.ScriptPubKey, (uint)i);
+					ExternalAddresses.Add(ExtPubKey.Derive(0, false).Derive(i, false).PubKey.WitHash.ScriptPubKey, (uint)i);
+				}
+			}
+
+			bool ours = InternalAddresses.ContainsKey(scriptPubKey) || ExternalAddresses.ContainsKey(scriptPubKey);
+
 			lock (ScriptHdPubKeyMapLock)
 			{
 				if (ScriptHdPubKeyMap.TryGetValue(scriptPubKey, out var key))
 				{
+					LastFound = key;
+
+					//if (LastFound.P2wpkhScript.ToString() == scriptPubKey.ToString())
+					//{
+					//	Logger.LogInfo($"missing{LastFound.P2wpkhScript}");
+					//}
+
 					return key;
+				}
+
+				if (ours)
+				{
+					var internalIndex = InternalAddresses.TryGet(scriptPubKey);
+					var externalIndex = ExternalAddresses.TryGet(scriptPubKey);
+
+					Logger.LogInfo($"missing:{LastFound.P2wpkhScript}");
+					Logger.LogInfo($"missing{scriptPubKey}");
 				}
 
 				return default;

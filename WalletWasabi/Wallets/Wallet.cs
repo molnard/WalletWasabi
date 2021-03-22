@@ -148,12 +148,12 @@ namespace WalletWasabi.Wallets
 				TransactionProcessor = new TransactionProcessor(BitcoinStore.TransactionStore, KeyManager, ServiceConfiguration.DustThreshold, ServiceConfiguration.PrivacyLevelStrong);
 				Coins = TransactionProcessor.Coins;
 
-				TransactionProcessor.WalletRelevantTransactionProcessed += TransactionProcessor_WalletRelevantTransactionProcessedAsync;
-				ChaumianClient.OnDequeue += ChaumianClient_OnDequeue;
+				//TransactionProcessor.WalletRelevantTransactionProcessed += TransactionProcessor_WalletRelevantTransactionProcessedAsync;
+				//ChaumianClient.OnDequeue += ChaumianClient_OnDequeue;
 
-				BitcoinStore.IndexStore.NewFilter += IndexDownloader_NewFilterAsync;
-				BitcoinStore.IndexStore.Reorged += IndexDownloader_ReorgedAsync;
-				BitcoinStore.MempoolService.TransactionReceived += Mempool_TransactionReceived;
+				//BitcoinStore.IndexStore.NewFilter += IndexDownloader_NewFilterAsync;
+				//BitcoinStore.IndexStore.Reorged += IndexDownloader_ReorgedAsync;
+				//BitcoinStore.MempoolService.TransactionReceived += Mempool_TransactionReceived;
 
 				BlockProvider = blockProvider;
 
@@ -202,7 +202,7 @@ namespace WalletWasabi.Wallets
 					using (await HandleFiltersLock.LockAsync(cancel).ConfigureAwait(false))
 					{
 						await LoadWalletStateAsync(cancel).ConfigureAwait(false);
-						await LoadDummyMempoolAsync().ConfigureAwait(false);
+						//await LoadDummyMempoolAsync().ConfigureAwait(false);
 					}
 				}
 
@@ -421,20 +421,23 @@ namespace WalletWasabi.Wallets
 			KeyManager.AssertNetworkOrClearBlockState(Network);
 			Height bestKeyManagerHeight = KeyManager.GetBestHeight();
 
+			Logger.LogInfo($"bestKeyManagerHeight:{bestKeyManagerHeight}");
+
+			Logger.LogInfo($"keys count:{KeyManager.GetKeys().Count()}");
 			using (BenchmarkLogger.Measure(LogLevel.Info, "Initial Transaction Processing"))
 			{
 				TransactionProcessor.Process(BitcoinStore.TransactionStore.ConfirmedStore.GetTransactions().TakeWhile(x => x.Height <= bestKeyManagerHeight));
 			}
-
+			Logger.LogInfo($"keys count:{KeyManager.GetKeys().Count()}");
 			// Go through the filters and queue to download the matches.
-			await BitcoinStore.IndexStore.ForeachFiltersAsync(async (filterModel) =>
-			{
-				if (filterModel.Filter is { }) // Filter can be null if there is no bech32 tx.
-				{
-					await ProcessFilterModelAsync(filterModel, cancel).ConfigureAwait(false);
-				}
-			},
-			new Height(bestKeyManagerHeight.Value + 1), cancel).ConfigureAwait(false);
+			//await BitcoinStore.IndexStore.ForeachFiltersAsync(async (filterModel) =>
+			//{
+			//	if (filterModel.Filter is { }) // Filter can be null if there is no bech32 tx.
+			//	{
+			//		await ProcessFilterModelAsync(filterModel, cancel).ConfigureAwait(false);
+			//	}
+			//},
+			//new Height(bestKeyManagerHeight.Value + 1), cancel).ConfigureAwait(false);
 		}
 
 		private async Task LoadDummyMempoolAsync()
