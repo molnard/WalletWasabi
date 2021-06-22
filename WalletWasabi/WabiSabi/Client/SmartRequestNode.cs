@@ -50,11 +50,19 @@ namespace WalletWasabi.WabiSabi.Client
 				inputVsizeCredentials,
 				cancellationToken).ConfigureAwait(false);
 
-			foreach ((TaskCompletionSource<Credential> tcs, Credential credential) in AmountCredentialTasks.Zip(result.RealAmountCredentials))
+			// TODO keep the credentials that were not needed by the graph
+			var amountCredentials = result.RealAmountCredentials.Take(amounts.Count());
+			var vsizeCredentials = result.RealVsizeCredentials.Take(vsizes.Count());
+
+			// TODO remove
+			amountCredentials = amountCredentials.Concat(Enumerable.Range(0, AmountCredentialTasks.Count() - amountCredentials.Count()).Select(_ => ZeroAmountCredentialPool.GetZeroCredential()));
+			vsizeCredentials = vsizeCredentials.Concat(Enumerable.Range(0, VsizeCredentialTasks.Count() - vsizeCredentials.Count()).Select(_ => ZeroVsizeCredentialPool.GetZeroCredential()));
+
+			foreach ((TaskCompletionSource<Credential> tcs, Credential credential) in AmountCredentialTasks.Zip(amountCredentials))
 			{
 				tcs.SetResult(credential);
 			}
-			foreach ((TaskCompletionSource<Credential> tcs, Credential credential) in VsizeCredentialTasks.Zip(result.RealVsizeCredentials))
+			foreach ((TaskCompletionSource<Credential> tcs, Credential credential) in VsizeCredentialTasks.Zip(vsizeCredentials))
 			{
 				tcs.SetResult(credential);
 			}
