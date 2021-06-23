@@ -60,16 +60,24 @@ namespace WalletWasabi.WabiSabi.Client
 			var allLockedInternalKeys = Keymanager.GetKeys(x => x.IsInternal && x.KeyState == KeyState.Locked);
 			var outputTxOuts = outputValues.Zip(allLockedInternalKeys, (amount, hdPubKey) => new TxOut(amount, hdPubKey.P2wpkhScript));
 
+			// TODO remove
+			var mutableTxOuts = outputTxOuts.ToArray();
+			var missing = Coins.Sum(c => c.EffectiveValue(roundState.FeeRate)) - outputTxOuts.Sum(o => o.EffectiveCost(roundState.FeeRate));
+			mutableTxOuts[0].Value += missing;
+			outputTxOuts = mutableTxOuts;
+
+			DependencyGraph dependencyGraph = DependencyGraph.ResolveCredentialDependencies(Coins, outputTxOuts, roundState.FeeRate, roundState.MaxVsizeAllocationPerAlice);
+
 			List<AliceClient> aliceClients = CreateAliceClients(roundState);
 
 			// Register coins.
 			aliceClients = await RegisterCoinsAsync(aliceClients, cancellationToken).ConfigureAwait(false);
 
 			// Confirm coins.
-			aliceClients = await ConfirmConnectionsAsync(aliceClients, roundState.MaxVsizeAllocationPerAlice, roundState.ConnectionConfirmationTimeout, cancellationToken).ConfigureAwait(false);
+			// TODO move to dgr.ResolveAsync
+			aliceClients = await ConfirmConnectionsAsync(aliceClients, dependencyGraph, roundState.ConnectionConfirmationTimeout, cancellationToken).ConfigureAwait(false);
 
 			// Re-issuances.
-			DependencyGraph dependencyGraph = DependencyGraph.ResolveCredentialDependencies(aliceClients.Select(a => a.Coin), outputTxOuts, roundState.FeeRate, roundState.MaxVsizeAllocationPerAlice);
 			DependencyGraphResolver dgr = new(dependencyGraph, ZeroAmountCredentialPool, ZeroVsizeCredentialPool);
 			var bobClient = CreateBobClient(roundState);
 			await dgr.StartReissuancesAsync(aliceClients, bobClient, cancellationToken).ConfigureAwait(false);
@@ -132,13 +140,39 @@ namespace WalletWasabi.WabiSabi.Client
 			return completedRequests.Where(x => x is not null).Cast<AliceClient>().ToList();
 		}
 
-		private async Task<List<AliceClient>> ConfirmConnectionsAsync(IEnumerable<AliceClient> aliceClients, long maxVsizeAllocationPerAlice, TimeSpan connectionConfirmationTimeout, CancellationToken cancellationToken)
+		// TODO redundant with SmartRequestNode, move confirmation to there and remove
+		private IEnumerable<long> AddExtraCredential(IEnumerable<long> valuesToRequest, long sum)
 		{
-			async Task<AliceClient?> ConfirmConnectionTask(AliceClient aliceClient)
+			var nonZeroValues = valuesToRequest.Where(v => v > 0);
+
+			if (nonZeroValues.Count() == ProtocolConstants.CredentialNumber)
+			{
+				return nonZeroValues;
+			}
+
+			var missing = sum - valuesToRequest.Sum();
+
+			if (missing > 0)
+			{
+				nonZeroValues = nonZeroValues.Append(missing);
+			}
+
+			var additionalZeros = ProtocolConstants.CredentialNumber - nonZeroValues.Count();
+
+			return nonZeroValues.Concat(Enumerable.Repeat(0L, additionalZeros));
+		}
+
+		private async Task<List<AliceClient>> ConfirmConnectionsAsync(IEnumerable<AliceClient> aliceClients, DependencyGraph dependencyGraph, TimeSpan connectionConfirmationTimeout, CancellationToken cancellationToken)
+		{
+			async Task<AliceClient?> ConfirmConnectionTask(AliceClient aliceClient, RequestNode node)
 			{
 				try
 				{
-					await aliceClient.ConfirmConnectionAsync(connectionConfirmationTimeout, maxVsizeAllocationPerAlice, cancellationToken).ConfigureAwait(false);
+					var amountsToRequest = AddExtraCredential(dependencyGraph.OutEdges(node, CredentialType.Amount).Select(e => (long)e.Value),  node.InitialBalance(CredentialType.Amount));
+					var vsizesToRequest = AddExtraCredential(dependencyGraph.OutEdges(node, CredentialType.Vsize).Select(e => (long)e.Value), node.InitialBalance(CredentialType.Vsize));
+
+					await aliceClient.ConfirmConnectionAsync(connectionConfirmationTimeout, amountsToRequest, vsizesToRequest, cancellationToken).ConfigureAwait(false);
+
 					return aliceClient;
 				}
 				catch (Exception e)
@@ -148,7 +182,7 @@ namespace WalletWasabi.WabiSabi.Client
 				}
 			}
 
-			var confirmationRequests = aliceClients.Select(ConfirmConnectionTask);
+			var confirmationRequests = Enumerable.Zip(aliceClients, dependencyGraph.Inputs, ConfirmConnectionTask);
 			var completedRequests = await Task.WhenAll(confirmationRequests).ConfigureAwait(false);
 
 			return completedRequests.Where(x => x is not null).Cast<AliceClient>().ToList();
