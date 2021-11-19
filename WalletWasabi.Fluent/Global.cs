@@ -17,7 +17,6 @@ using WalletWasabi.Blockchain.Blocks;
 using WalletWasabi.Blockchain.Mempool;
 using WalletWasabi.Blockchain.TransactionBroadcasting;
 using WalletWasabi.Blockchain.Transactions;
-using WalletWasabi.CoinJoin.Client;
 using WalletWasabi.Fluent.Models;
 using WalletWasabi.Fluent.Rpc;
 using WalletWasabi.Helpers;
@@ -58,7 +57,6 @@ namespace WalletWasabi.Fluent
 		public WasabiSynchronizer Synchronizer { get; private set; }
 		public WalletManager WalletManager { get; }
 		public TransactionBroadcaster TransactionBroadcaster { get; set; }
-		public CoinJoinProcessor CoinJoinProcessor { get; set; }
 		private TorProcessManager? TorManager { get; set; }
 		public CoreNode BitcoinCoreNode { get; private set; }
 		public HostedServices HostedServices { get; }
@@ -187,7 +185,6 @@ namespace WalletWasabi.Fluent
 					Logger.LogInfo("Start synchronizing filters...");
 
 					TransactionBroadcaster.Initialize(HostedServices.Get<P2pNetwork>().Nodes, BitcoinCoreNode?.RpcClient);
-					CoinJoinProcessor = new CoinJoinProcessor(Network, Synchronizer, WalletManager, BitcoinCoreNode?.RpcClient);
 
 					await StartRpcServerAsync(terminateService, cancel).ConfigureAwait(false);
 
@@ -333,12 +330,6 @@ namespace WalletWasabi.Fluent
 						using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(21));
 						await rpcServer.StopAsync(cts.Token).ConfigureAwait(false);
 						Logger.LogInfo($"{nameof(RpcServer)} is stopped.", nameof(Global));
-					}
-
-					if (CoinJoinProcessor is { } coinJoinProcessor)
-					{
-						coinJoinProcessor.Dispose();
-						Logger.LogInfo($"{nameof(CoinJoinProcessor)} is disposed.");
 					}
 
 					if (LegalChecker is { } legalChecker)
