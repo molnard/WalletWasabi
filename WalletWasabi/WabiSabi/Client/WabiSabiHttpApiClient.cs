@@ -84,9 +84,23 @@ public class WabiSabiHttpApiClient : IWabiSabiApiRequestHandler
 				using CancellationTokenSource requestTimeoutCts = new(retryTimeout is { } timeout ? timeout : totalTimeout);
 				using CancellationTokenSource requestCts = CancellationTokenSource.CreateLinkedTokenSource(combinedToken, requestTimeoutCts.Token);
 
+				var requestStart = DateTimeOffset.UtcNow;
+				HttpResponseMessage response;
+
 				// Any transport layer errors will throw an exception here.
-				HttpResponseMessage response = await _client
-					.SendAsync(HttpMethod.Post, GetUriEndPoint(action), content, requestCts.Token).ConfigureAwait(false);
+				try
+				{
+					response = await _client
+					   .SendAsync(HttpMethod.Post, GetUriEndPoint(action), content, requestCts.Token)
+					   .ConfigureAwait(false);
+				}
+				catch
+				{
+					RequestTimeStatista2.Instance.Add($"XXX-API-REQ-{action}", DateTimeOffset.UtcNow - requestStart, 0);
+					throw;
+				}
+
+				RequestTimeStatista2.Instance.Add($"XXX-API-REQ-{action}", DateTimeOffset.UtcNow - requestStart, 1);
 
 				var successRatio = (float)1 / attempt;
 				RequestTimeStatista2.Instance.Add($"XXX-API-OK-{action}", DateTimeOffset.UtcNow - before, successRatio);

@@ -69,7 +69,7 @@ public class RequestTimeStatista2
 					? successfulRequests.Average(x => x.SuccessRatio)
 					: -1;
 
-				Logger.LogInfo($"Responded to '{request.Key}'\t {request.Value.Count} times. Median: {seconds.Median():0.0}s Average: {seconds.Average():0.0}s Largest {seconds.Max():0.0}s SuccessRatio: {successRatio:0.##} FatalFails: {fatalFailures}");
+				Logger.LogInfo($"Responded to '{request.Key}'\t {request.Value.Count} times. Median: {seconds.Median():0.0}s Average: {seconds.Average():0.0}s Largest {seconds.Max():0.0}s SuccessRatio: {successRatio:0.######} FatalFails: {fatalFailures}");
 			}
 
 			LastDisplayed = DateTimeOffset.UtcNow;
