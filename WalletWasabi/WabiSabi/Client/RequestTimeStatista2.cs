@@ -3,7 +3,7 @@ using System.Linq;
 using WalletWasabi.Crypto;
 using WalletWasabi.Logging;
 
-namespace WalletWasabi.WabiSabi.Backend.Statistics;
+namespace WalletWasabi.WabiSabi.Client;
 
 public class RequestTimeStatista2
 {

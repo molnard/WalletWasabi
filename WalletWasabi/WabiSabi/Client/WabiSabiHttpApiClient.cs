@@ -11,7 +11,6 @@ using WalletWasabi.Tor.Http;
 using WalletWasabi.Tor.Http.Extensions;
 using WalletWasabi.Tor.Socks5.Exceptions;
 using WalletWasabi.WabiSabi.Backend.PostRequests;
-using WalletWasabi.WabiSabi.Backend.Statistics;
 using WalletWasabi.WabiSabi.Models;
 using WalletWasabi.WabiSabi.Models.Serialization;
 
@@ -96,14 +95,14 @@ public class WabiSabiHttpApiClient : IWabiSabiApiRequestHandler
 				}
 				catch
 				{
-					RequestTimeStatista2.Instance.Add($"XXX-API-REQ-{action}", DateTimeOffset.UtcNow - requestStart, 0);
+					RequestTimeStatista2.Instance.Add($"XXX-API-{action}-REQ", DateTimeOffset.UtcNow - requestStart, 0);
 					throw;
 				}
 
-				RequestTimeStatista2.Instance.Add($"XXX-API-REQ-{action}", DateTimeOffset.UtcNow - requestStart, 1);
+				RequestTimeStatista2.Instance.Add($"XXX-API-{action}-REQ", DateTimeOffset.UtcNow - requestStart, 1);
 
 				var successRatio = (float)1 / attempt;
-				RequestTimeStatista2.Instance.Add($"XXX-API-OK-{action}", DateTimeOffset.UtcNow - before, successRatio);
+				RequestTimeStatista2.Instance.Add($"XXX-API-{action}-OK", DateTimeOffset.UtcNow - before, successRatio);
 
 				TimeSpan totalTime = DateTime.UtcNow - start;
 
@@ -141,7 +140,7 @@ public class WabiSabiHttpApiClient : IWabiSabiApiRequestHandler
 			{
 				Logger.LogDebug($"Attempt {attempt} failed with exception {e}.");
 
-				RequestTimeStatista2.Instance.Add($"XXX-API-OK-{action}", DateTimeOffset.UtcNow - before, 0);
+				RequestTimeStatista2.Instance.Add($"XXX-API-{action}-OK", DateTimeOffset.UtcNow - before, 0);
 
 				if (exceptions.Any())
 				{
@@ -168,7 +167,7 @@ public class WabiSabiHttpApiClient : IWabiSabiApiRequestHandler
 		}
 		while (!combinedToken.IsCancellationRequested);
 
-		RequestTimeStatista2.Instance.Add($"XXX-API-OK-{action}", DateTimeOffset.UtcNow - before, 0);
+		RequestTimeStatista2.Instance.Add($"XXX-API-{action}-OK", DateTimeOffset.UtcNow - before, 0);
 
 		throw new AggregateException(exceptions.Keys);
 	}

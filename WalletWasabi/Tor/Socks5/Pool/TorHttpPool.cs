@@ -15,7 +15,7 @@ using WalletWasabi.Tor.Http.Models;
 using WalletWasabi.Tor.Socks5.Exceptions;
 using WalletWasabi.Tor.Socks5.Models.Fields.OctetFields;
 using WalletWasabi.Tor.Socks5.Pool.Circuits;
-using WalletWasabi.WabiSabi.Backend.Statistics;
+using WalletWasabi.WabiSabi.Client;
 
 namespace WalletWasabi.Tor.Socks5.Pool;
 
