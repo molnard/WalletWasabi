@@ -1,4 +1,6 @@
 using Microsoft.Extensions.Hosting;
+using Newtonsoft.Json.Linq;
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using WalletWasabi.Extensions;
@@ -47,6 +49,15 @@ public abstract class PeriodicRunner : BackgroundService
 	/// <summary>
 	/// Triggers and waits for the action to execute.
 	/// </summary>
+	public async Task TriggerAndWaitRoundAsync(CancellationToken token)
+	{
+		EventAwaiter<TimeSpan> eventAwaiter = new(
+							h => Tick += h,
+							h => Tick -= h);
+		TriggerRound();
+		await eventAwaiter.WaitAsync(token).ConfigureAwait(false);
+	}
+
 	public async Task TriggerAndWaitRoundAsync(TimeSpan timeout)
 	{
 		EventAwaiter<TimeSpan> eventAwaiter = new(

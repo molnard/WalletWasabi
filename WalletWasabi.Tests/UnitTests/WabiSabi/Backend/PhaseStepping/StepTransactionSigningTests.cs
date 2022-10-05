@@ -21,7 +21,7 @@ namespace WalletWasabi.Tests.UnitTests.WabiSabi.Backend.PhaseStepping;
 
 public class StepTransactionSigningTests
 {
-	[Fact]
+	[Fact(Timeout = 10000)]
 	public async Task EveryoneSignedAsync()
 	{
 		WabiSabiConfig cfg = new()
@@ -53,7 +53,7 @@ public class StepTransactionSigningTests
 		await arena.StopAsync(CancellationToken.None);
 	}
 
-	[Fact]
+	[Fact(Timeout = 10000)]
 	public async Task FailsBroadcastAsync()
 	{
 		WabiSabiConfig cfg = new()
@@ -91,7 +91,7 @@ public class StepTransactionSigningTests
 		await arena.StopAsync(CancellationToken.None);
 	}
 
-	[Fact]
+	[Fact(Timeout = 10000)]
 	public async Task AlicesSpentAsync()
 	{
 		WabiSabiConfig cfg = new()
@@ -135,7 +135,7 @@ public class StepTransactionSigningTests
 		await arena.StopAsync(CancellationToken.None);
 	}
 
-	[Fact]
+	[Fact(Timeout = 10000)]
 	public async Task TimeoutInsufficientPeersAsync()
 	{
 		WabiSabiConfig cfg = new()
@@ -173,7 +173,7 @@ public class StepTransactionSigningTests
 		await arena.StopAsync(CancellationToken.None);
 	}
 
-	[Fact]
+	[Fact(Timeout = 10000)]
 	public async Task TimeoutSufficientPeersAsync()
 	{
 		WabiSabiConfig cfg = new()

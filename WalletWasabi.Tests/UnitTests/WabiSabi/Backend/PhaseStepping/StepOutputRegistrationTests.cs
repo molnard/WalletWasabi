@@ -202,7 +202,7 @@ public class StepOutputRegistrationTests
 
 		while (Phase.ConnectionConfirmation != round.Phase)
 		{
-			await arena.TriggerAndWaitRoundAsync(TimeSpan.FromSeconds(21));
+			AssertAsync.CompletesIn(21, () => arena.TriggerAndWaitRoundAsync(TimeSpan.FromSeconds(21)));
 		}
 		await Task.WhenAll(task1, task2);
 		var aliceClient1 = await task1;
