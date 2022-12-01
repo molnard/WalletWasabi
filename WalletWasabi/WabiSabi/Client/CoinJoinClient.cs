@@ -35,7 +35,6 @@ public class CoinJoinClient
 	// This is a maximum cap the delay can be smaller if the remaining time is less.
 	private static readonly TimeSpan MaximumRequestDelay = TimeSpan.FromSeconds(10);
 
-
 	/// <param name="anonScoreTarget">Coins those have reached anonymity target, but still can be mixed if desired.</param>
 	/// <param name="consolidationMode">If true, then aggressively try to consolidate as many coins as it can.</param>
 	public CoinJoinClient(
@@ -422,6 +421,7 @@ public class CoinJoinClient
 				var delay = date - DateTimeOffset.UtcNow;
 				if (delay > TimeSpan.Zero)
 				{
+					var state = await RoundStatusUpdater.CreateRoundAwaiterAsync(roundState.Id, Phase.Ended, timeoutAndGlobalCts.Token).ConfigureAwait(false);
 					await Task.Delay(delay, timeoutAndGlobalCts.Token).ConfigureAwait(false);
 				}
 				return await RegisterInputAsync(coin).ConfigureAwait(false);
@@ -997,12 +997,12 @@ public class CoinJoinClient
 		var constructionState = roundState.Assert<ConstructionState>();
 
 		// Get the output's size and its of the input that will spend it in the future.
-		// Here we assume all the outputs share the same scriptpubkey type.  
+		// Here we assume all the outputs share the same scriptpubkey type.
 		var preferTaprootOutputs = false;
-		var (inputVirtualSize, outputVirtualSize)= DestinationProvider.Peek(preferTaprootOutputs).IsScriptType(ScriptType.Taproot)
+		var (inputVirtualSize, outputVirtualSize) = DestinationProvider.Peek(preferTaprootOutputs).IsScriptType(ScriptType.Taproot)
 			? (Constants.P2trInputVirtualSize, Constants.P2trOutputVirtualSize)
 			: (Constants.P2wpkhInputVirtualSize, Constants.P2wpkhOutputVirtualSize);
-		
+
 		AmountDecomposer amountDecomposer = new(roundParameters.MiningFeeRate, roundParameters.AllowedOutputAmounts, outputVirtualSize, inputVirtualSize, (int)availableVsize);
 		var theirCoins = constructionState.Inputs.Where(x => !registeredCoins.Any(y => x.Outpoint == y.Outpoint));
 		var registeredCoinEffectiveValues = registeredAliceClients.Select(x => x.EffectiveValue);
@@ -1108,5 +1108,57 @@ public class CoinJoinClient
 		}
 
 		return result;
+	}
+
+	private async Task DelayOrThrowAsync(TimeSpan delay, RoundState roundState, CancellationToken cancellationToken)
+	{
+		using CancellationTokenSource cancelWatcher = new();
+		using CancellationTokenSource cancelDelay = new();
+
+		using CancellationTokenSource linkedWatcher = CancellationTokenSource.CreateLinkedTokenSource(cancelWatcher.Token, cancellationToken);
+		using CancellationTokenSource linkedDelay = CancellationTokenSource.CreateLinkedTokenSource(cancelDelay.Token, cancellationToken);
+
+		var roundEndedTask = RoundStatusUpdater.CreateRoundAwaiterAsync(roundState.Id, Phase.Ended, linkedWatcher.Token);
+		var delayElapsedTask = Task.Delay(delay, linkedDelay.Token);
+
+		await Task.WhenAny(delayElapsedTask, roundEndedTask).ConfigureAwait(false);
+
+		try
+		{
+			// The round ended unexpectedly.
+			if (roundEndedTask.IsCompletedSuccessfully)
+			{
+				var newRoundState = await roundEndedTask.ConfigureAwait(false);
+				cancelDelay.Cancel();
+				throw new UnexpectedRoundPhaseException(roundState.Id, roundState.Phase, newRoundState);
+			}
+
+			// The delay ended.
+			if (delayElapsedTask.IsCompletedSuccessfully)
+			{
+				await delayElapsedTask.ConfigureAwait(false);
+				cancelWatcher.Cancel();
+				return;
+			}
+
+			cancellationToken.ThrowIfCancellationRequested();
+
+			throw new InvalidOperationException("Something unexpected happened.");
+		}
+		finally
+		{
+			try
+			{
+				// Make sure tasks are cancelled.
+				cancelWatcher.Cancel();
+				cancelDelay.Cancel();
+
+				// Handle all exceptions.
+				await Task.WhenAll(delayElapsedTask, roundEndedTask).ConfigureAwait(false);
+			}
+			catch
+			{
+			}
+		}
 	}
 }
