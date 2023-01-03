@@ -391,7 +391,15 @@ public partial class Arena : IWabiSabiApiRequestHandler
 			throw new WabiSabiProtocolException(WabiSabiProtocolErrorCode.InputImmature);
 		}
 
-		return new Coin(input, txOutResponse.TxOut);
+		var coin = new Coin(input, txOutResponse.TxOut);
+
+		if (coin.Amount >= Config.CoinVerifierRequiredConfirmationAmount && txOutResponse.Confirmations < Config.CoinVerifierRequiredConfirmation)
+		{
+			Logger.LogInfo($"Coin cannot be verified - preventing registration. Amount: {coin.Amount}/{Config.CoinVerifierRequiredConfirmationAmount} Confirmations: {txOutResponse.Confirmations / Config.CoinVerifierRequiredConfirmation}.");
+			throw new WabiSabiProtocolException(WabiSabiProtocolErrorCode.InputImmature);
+		}
+
+		return coin;
 	}
 
 	public Task<RoundStateResponse> GetStatusAsync(RoundStateRequest request, CancellationToken cancellationToken)
