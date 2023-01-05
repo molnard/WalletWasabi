@@ -29,7 +29,7 @@ public class CoinVerifierApiClient
 
 	private HttpClient HttpClient { get; set; }
 
-	public virtual async Task<(ApiResponseItem ApiResponseItem, Script Script)> SendRequestAsync(Script script, CancellationToken cancellationToken)
+	public virtual async Task<ApiResponseItem> SendRequestAsync(Script script, CancellationToken cancellationToken)
 	{
 		if (HttpClient.BaseAddress is null)
 		{
@@ -42,7 +42,7 @@ public class CoinVerifierApiClient
 
 		var address = script.GetDestinationAddress(Network.Main); // API provider don't accept testnet/regtest addresses.
 
-		using CancellationTokenSource timeoutTokenSource = new(TimeSpan.FromSeconds(15));
+		using CancellationTokenSource timeoutTokenSource = new(TimeSpan.FromSeconds(90)); // Sanity check timeout.
 		using CancellationTokenSource linkedTokenSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutTokenSource.Token);
 		using var content = new HttpRequestMessage(HttpMethod.Get, $"{HttpClient.BaseAddress}{address}");
 		content.Headers.Authorization = new("Bearer", ApiToken);
@@ -62,39 +62,37 @@ public class CoinVerifierApiClient
 
 		ApiResponseItem deserializedRecord = JsonConvert.DeserializeObject<ApiResponseItem>(responseString)
 			?? throw new JsonSerializationException($"Failed to deserialize API response, response string was: '{responseString}'");
-		return (deserializedRecord, script);
+		return deserializedRecord;
 	}
 
-	public async IAsyncEnumerable<(ApiResponseItem ApiResponseItem, Script ScriptPubKey)> VerifyScriptsAsync(IEnumerable<Script> scripts, [EnumeratorCancellation] CancellationToken cancellationToken)
+	public async IAsyncEnumerable<(Script ScriptPubKey, ApiResponseItem? ApiResponseItem, Exception? Exception)> VerifyScriptsAsync(IEnumerable<Script> scripts, [EnumeratorCancellation] CancellationToken cancellationToken)
 	{
-		IEnumerable<IEnumerable<Script>> chunks = scripts.Chunk(100);
+		IEnumerable<IEnumerable<Script>> chunks = scripts.Distinct().Chunk(100);
 
 		foreach (var chunk in chunks)
 		{
-			var tasks = chunk.Select(script => SendRequestAsync(script, cancellationToken)).ToList();
+			var taskAndScripts = chunk.ToDictionary(script => SendRequestAsync(script, cancellationToken), script => script);
 
-			foreach (var task in tasks)
+			do
 			{
-				(ApiResponseItem ApiResponseItem, Script ScriptPubKey) response;
+				var completedTask = await Task.WhenAny(taskAndScripts.Keys).ConfigureAwait(false);
+				var script = taskAndScripts[completedTask];
+				ApiResponseItem? responseItem = null;
+				Exception? exception = null;
 				try
 				{
-					var completedTask = await Task.WhenAny(task).ConfigureAwait(false);
-
-					response = await completedTask.ConfigureAwait(false);
-				}
-				catch (OperationCanceledException)
-				{
-					Logger.LogWarning($"API response didn't arrive in time, operation was cancelled.");
-					continue;
+					responseItem = await completedTask.ConfigureAwait(false);
 				}
 				catch (Exception ex)
 				{
-					Logger.LogError(ex);
-					continue;
+					exception = ex;
 				}
 
-				yield return response;
+				yield return (script, responseItem, exception);
+
+				taskAndScripts.Remove(completedTask);
 			}
+			while (taskAndScripts.Count > 0);
 		}
 	}
 }

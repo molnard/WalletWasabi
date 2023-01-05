@@ -53,13 +53,13 @@ public class CoinVerifier
 			if (Whitelist.TryGet(coin.Outpoint, out _))
 			{
 				innocentsCounter++;
-				yield return new CoinVerifyInfo(Coin: coin, SuccessfulVerification: true, ShouldBan: false, Reason: CoinVerifierReason.Whitelisted, ApiResponseItem: null);
+				yield return new CoinVerifyInfo(Coin: coin, SuccessfulVerification: true, ShouldBan: false, Reason: CoinVerifierReason.Whitelisted);
 			}
 			// Step 2: Check if the coin is from a coinjoin transaction.
 			else if (CoinJoinIdStore.Contains(coin.Outpoint.Hash))
 			{
 				innocentsCounter++;
-				yield return new CoinVerifyInfo(Coin: coin, SuccessfulVerification: true, ShouldBan: false, Reason: CoinVerifierReason.FromCoinjoin, ApiResponseItem: null);
+				yield return new CoinVerifyInfo(Coin: coin, SuccessfulVerification: true, ShouldBan: false, Reason: CoinVerifierReason.FromCoinjoin);
 			}
 			else
 			{
@@ -70,16 +70,21 @@ public class CoinVerifier
 		Logger.LogInfo($"{innocentsCounter} out of {coinsToCheck.Count()} utxo is already verified in Round({roundId}).");
 		await foreach (var response in CoinVerifierApiClient.VerifyScriptsAsync(scriptsToCheck, linkedCts.Token).ConfigureAwait(false))
 		{
-			bool shouldBanUtxo = CheckForFlags(response.ApiResponseItem);
-
 			// Find all coins with the same script (address reuse).
 			foreach (var coin in coinsToCheck.Where(c => c.ScriptPubKey == response.ScriptPubKey))
 			{
-				if (!shouldBanUtxo)
+				if (response.Exception is null && response.ApiResponseItem is { } apiResponse)
 				{
-					Whitelist.Add(coin.Outpoint);
+					bool shouldBanUtxo = CheckForFlags(apiResponse);
+					if (!shouldBanUtxo)
+					{
+						Whitelist.Add(coin.Outpoint);
+					}
+					yield return new CoinVerifyInfo(Coin: coin, SuccessfulVerification: true, ShouldBan: shouldBanUtxo, Reason: CoinVerifierReason.RemoteApiCheck);
+					continue;
 				}
-				yield return new CoinVerifyInfo(Coin: coin, SuccessfulVerification: true, ShouldBan: shouldBanUtxo, Reason: CoinVerifierReason.RemoteApiCheck, ApiResponseItem: response.ApiResponseItem);
+
+				yield return new CoinVerifyInfo(Coin: coin, SuccessfulVerification: false, ShouldBan: false, Reason: CoinVerifierReason.RemoteApiCheck, ApiResponseItem: response.ApiResponseItem, Exception: response.Exception);
 			}
 		}
 
