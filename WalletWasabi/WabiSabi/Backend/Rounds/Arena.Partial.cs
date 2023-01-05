@@ -12,6 +12,8 @@ using WalletWasabi.WabiSabi.Models.MultipartyTransaction;
 using WalletWasabi.Logging;
 using WalletWasabi.Crypto.Randomness;
 using WalletWasabi.WabiSabi.Backend.DoSPrevention;
+using WalletWasabi.Blockchain.TransactionOutputs;
+using WalletWasabi.Blockchain.Keys;
 
 namespace WalletWasabi.WabiSabi.Backend.Rounds;
 
@@ -391,15 +393,7 @@ public partial class Arena : IWabiSabiApiRequestHandler
 			throw new WabiSabiProtocolException(WabiSabiProtocolErrorCode.InputImmature);
 		}
 
-		var coin = new Coin(input, txOutResponse.TxOut);
-
-		if (Config.IsCoinVerifierEnabled && coin.Amount >= Config.CoinVerifierRequiredConfirmationAmount && txOutResponse.Confirmations < Config.CoinVerifierRequiredConfirmation)
-		{
-			Logger.LogInfo($"Coin ({coin.Outpoint}) cannot be verified - preventing registration. Amount: {coin.Amount}/{Config.CoinVerifierRequiredConfirmationAmount} Confirmations: {txOutResponse.Confirmations}/{Config.CoinVerifierRequiredConfirmation}.");
-			throw new WabiSabiProtocolException(WabiSabiProtocolErrorCode.InputImmature);
-		}
-
-		return coin;
+		return new Coin(input, txOutResponse.TxOut);
 	}
 
 	public Task<RoundStateResponse> GetStatusAsync(RoundStateRequest request, CancellationToken cancellationToken)

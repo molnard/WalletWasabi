@@ -111,20 +111,39 @@ public partial class Arena : PeriodicRunner
 		{
 			try
 			{
-				await foreach (var offendingAlices in CheckTxoSpendStatusAsync(round, cancel).ConfigureAwait(false))
+				var aliceAndGetTxOutResponses = await GetTxOutsAsync(round, cancel).ConfigureAwait(false);
+
+				var spentAlices = aliceAndGetTxOutResponses
+					.Where(aliceAndGetTxOut => aliceAndGetTxOut.GetTxOutResponse is null) // Input is spent.
+					.Select(aliceAndGetTxOut => aliceAndGetTxOut.Alice)
+					.ToHashSet();
+
+				if (spentAlices.Any())
 				{
-					if (offendingAlices.Any())
-					{
-						round.Alices.RemoveAll(x => offendingAlices.Contains(x));
-					}
+					round.Alices.RemoveAll(x => spentAlices.Contains(x));
 				}
 
 				if (round is not BlameRound && CoinVerifier is not null)
 				{
 					try
 					{
+						var aliceAndGetTxOutResponsesDict = aliceAndGetTxOutResponses.ToDictionary(x => x.Alice, x => x.GetTxOutResponse);
+
+						var bigAndUnverifiable = round.Alices
+							.Where(x => x.Coin.Amount >= Config.CoinVerifierRequiredConfirmationAmount)
+							.Where(x => aliceAndGetTxOutResponsesDict[x] is { Confirmations: var confirmations } && confirmations < Config.CoinVerifierRequiredConfirmation)
+							.ToHashSet();
+
+						if (bigAndUnverifiable.Any())
+						{
+							round.Alices.RemoveAll(x => bigAndUnverifiable.Contains(x));
+						}
+
 						int banCounter = 0;
-						var aliceDictionary = round.Alices.Where(x => !x.IsPayingZeroCoordinationFee).ToDictionary(a => a.Coin, a => a);
+						var aliceDictionary = round.Alices
+							.Where(x => !x.IsPayingZeroCoordinationFee) // Filtering out alices coming from CJ or 1 hop.
+							.ToDictionary(a => a.Coin, a => a);
+
 						IEnumerable<Coin> coinsToCheck = aliceDictionary.Values.Select(x => x.Coin);
 						await foreach (var coinVerifyInfo in CoinVerifier.VerifyCoinsAsync(coinsToCheck, cancel, round.Id.ToString()).ConfigureAwait(false))
 						{
@@ -194,13 +213,16 @@ public partial class Arena : PeriodicRunner
 					// remove any spent inputs.
 					if (round.InputCount >= Config.MinInputCountByRound)
 					{
-						await foreach (var offendingAlices in CheckTxoSpendStatusAsync(round, cancel).ConfigureAwait(false))
+						var aliceAndGetTxOutResponses = await GetTxOutsAsync(round, cancel).ConfigureAwait(false);
+						var spentAlices = aliceAndGetTxOutResponses
+							.Where(aliceAndGetTxOut => aliceAndGetTxOut.GetTxOutResponse is null) // Input is spent.
+							.Select(aliceAndGetTxOut => aliceAndGetTxOut.Alice)
+							.ToHashSet();
+
+						if (spentAlices.Any())
 						{
-							if (offendingAlices.Any())
-							{
-								var removed = round.Alices.RemoveAll(x => offendingAlices.Contains(x));
-								round.LogInfo($"There were {removed} alices removed because they spent the registered UTXO.");
-							}
+							var removed = round.Alices.RemoveAll(x => spentAlices.Contains(x));
+							round.LogInfo($"There were {removed} alices removed because they spent the registered UTXO.");
 						}
 					}
 
@@ -352,8 +374,10 @@ public partial class Arena : PeriodicRunner
 		}
 	}
 
-	private async IAsyncEnumerable<Alice[]> CheckTxoSpendStatusAsync(Round round, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+	private async Task<IEnumerable<(Alice Alice, GetTxOutResponse? GetTxOutResponse)>> GetTxOutsAsync(Round round, CancellationToken cancellationToken = default)
 	{
+		List<(Alice Alice, GetTxOutResponse? TxOutResponse)> results = new();
+
 		foreach (var chunckOfAlices in round.Alices.ToList().ChunkBy(16))
 		{
 			var batchedRpc = Rpc.PrepareBatch();
@@ -364,10 +388,17 @@ public partial class Arena : PeriodicRunner
 
 			await batchedRpc.SendBatchAsync(cancellationToken).ConfigureAwait(false);
 
-			var spendStatusCheckingTasks = aliceCheckingTaskPairs.Select(async x => (x.Alice, Status: await x.StatusTask.ConfigureAwait(false)));
+			var spendStatusCheckingTasks = aliceCheckingTaskPairs.Select(async x => (x.Alice, Status: await x.StatusTask.ConfigureAwait(false))).ToList();
+
 			var alices = await Task.WhenAll(spendStatusCheckingTasks).ConfigureAwait(false);
-			yield return alices.Where(x => x.Status is null).Select(x => x.Alice).ToArray();
+
+			foreach (var (alice, getTxOutResponse) in alices)
+			{
+				results.Add((alice, getTxOutResponse));
+			}
 		}
+
+		return results;
 	}
 
 	private async Task FailTransactionSigningPhaseAsync(Round round, CancellationToken cancellationToken)
