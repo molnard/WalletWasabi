@@ -128,9 +128,9 @@ public class WabiSabiConfig : ConfigBase
 	[JsonProperty(PropertyName = "CoinVerifierApiAuthToken", DefaultValueHandling = DefaultValueHandling.Populate)]
 	public string CoinVerifierApiAuthToken { get; set; } = "";
 
-	[DefaultValue(5)]
+	[DefaultValue(6)]
 	[JsonProperty(PropertyName = "CoinVerifierRequiredConfirmation", DefaultValueHandling = DefaultValueHandling.Populate)]
-	public int CoinVerifierRequiredConfirmation { get; set; } = 5;
+	public int CoinVerifierRequiredConfirmation { get; set; } = 6;
 
 	[DefaultValueMoneyBtc("1")]
 	[JsonProperty(PropertyName = "CoinVerifierRequiredConfirmationAmount", DefaultValueHandling = DefaultValueHandling.Populate)]
