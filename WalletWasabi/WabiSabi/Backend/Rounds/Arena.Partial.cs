@@ -395,7 +395,7 @@ public partial class Arena : IWabiSabiApiRequestHandler
 
 		if (coin.Amount >= Config.CoinVerifierRequiredConfirmationAmount && txOutResponse.Confirmations < Config.CoinVerifierRequiredConfirmation)
 		{
-			Logger.LogInfo($"Coin cannot be verified - preventing registration. Amount: {coin.Amount}/{Config.CoinVerifierRequiredConfirmationAmount} Confirmations: {txOutResponse.Confirmations / Config.CoinVerifierRequiredConfirmation}.");
+			Logger.LogInfo($"Coin cannot be verified - preventing registration. Amount: {coin.Amount}/{Config.CoinVerifierRequiredConfirmationAmount} Confirmations: {txOutResponse.Confirmations}/{Config.CoinVerifierRequiredConfirmation}.");
 			throw new WabiSabiProtocolException(WabiSabiProtocolErrorCode.InputImmature);
 		}
 
