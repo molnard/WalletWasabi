@@ -41,7 +41,7 @@ public class CoinVerifier
 
 	private Dictionary<uint256, RoundVerifier> RoundVerifiers { get; } = new();
 
-	public async IAsyncEnumerable<CoinVerifyInfo> VerifyCoinsAsync(IEnumerable<Coin> coinsToCheck, [EnumeratorCancellation] CancellationToken cancellationToken, uint256 roundId)
+	public async IAsyncEnumerable<CoinVerifyInfo> VerifyCoinsAsync([EnumeratorCancellation] CancellationToken cancellationToken, uint256 roundId)
 	{
 		var before = DateTimeOffset.UtcNow;
 
@@ -56,8 +56,9 @@ public class CoinVerifier
 
 		do
 		{
-			var completedTask = await Task.WhenAny(tasks).ConfigureAwait(false);
-			var coinVerifyInfo = await completedTask.ConfigureAwait(false);
+			// TODO handle timeout!!
+			var completedTask = await Task.WhenAny(tasks).WaitAsync(linkedCts.Token).ConfigureAwait(false);
+			var coinVerifyInfo = await completedTask.WaitAsync(linkedCts.Token).ConfigureAwait(false);
 
 			if (!coinVerifyInfo.ShouldBan)
 			{
@@ -66,7 +67,7 @@ public class CoinVerifier
 
 			yield return coinVerifyInfo;
 		}
-		while (!cancellationTokenSource.IsCancellationRequested);
+		while (!linkedCts.IsCancellationRequested);
 
 		if (Whitelist.ChangeId != lastChangeId)
 		{
