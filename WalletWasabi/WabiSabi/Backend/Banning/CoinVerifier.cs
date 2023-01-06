@@ -1,11 +1,14 @@
 using NBitcoin;
+using NBitcoin.RPC;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using WalletWasabi.Logging;
+using WalletWasabi.WabiSabi.Backend.Models;
 using WalletWasabi.WabiSabi.Backend.Rounds.CoinJoinStorage;
 using WalletWasabi.WabiSabi.Backend.Statistics;
+using WalletWasabi.WabiSabi.Models;
 
 namespace WalletWasabi.WabiSabi.Backend.Banning;
 
@@ -35,6 +38,8 @@ public class CoinVerifier
 	private CoinJoinIdStore CoinJoinIdStore { get; }
 	private CoinVerifierApiClient CoinVerifierApiClient { get; }
 
+	private Dictionary<uint256, RoundVerifier> RoundVerifiers { get; } = new Dictionary<uint256, RoundVerifier>();
+
 	private bool CheckIfAlreadyVerified(Coin coin)
 	{
 		// Step 1: Check if address is whitelisted.
@@ -54,6 +59,7 @@ public class CoinVerifier
 
 	public async IAsyncEnumerable<CoinVerifyInfo> VerifyCoinsAsync(IEnumerable<Coin> coinsToCheck, [EnumeratorCancellation] CancellationToken cancellationToken, string roundId = "")
 	{
+		// TODO: impelement NEW logic!!!
 		var before = DateTimeOffset.UtcNow;
 
 		using CancellationTokenSource cancellationTokenSource = new(TimeSpan.FromSeconds(30));
@@ -124,5 +130,56 @@ public class CoinVerifier
 		shouldBan = flagIds.Any(id => WabiSabiConfig.RiskFlags.Contains(id));
 
 		return shouldBan;
+	}
+
+	internal void AddAlice(Alice alice, GetTxOutResponse txOutResponse)
+	{
+		if (RoundVerifiers.TryGetValue(alice.Round.Id, out var roundVerifier))
+		{
+			roundVerifier.AddAlice(alice, txOutResponse);
+			return;
+		}
+
+		throw new InvalidOperationException($"Could not find {nameof(RoundVerifier)} for round:'{alice.Round.Id}'.");
+	}
+
+	internal void StepRoundVerifiers(IEnumerable<RoundState> roundStates, CancellationToken cancel)
+	{
+		// Handling new round additions.
+		var newRoundIds = roundStates.Where(rs => !RoundVerifiers.ContainsKey(rs.Id)).Select(rs => rs.Id);
+
+		foreach (var newRoundId in newRoundIds)
+		{
+			var newVerifier = new RoundVerifier(newRoundId);
+			RoundVerifiers.Add(newRoundId, newVerifier);
+		}
+
+		foreach (var roundVerifier in RoundVerifiers.Values.ToArray())
+		{
+			if (roundVerifier.IsFinished)
+			{
+				// Remove RoundVerifiers when they are finished.
+				RoundVerifiers.Remove(roundVerifier.RoundId);
+				continue;
+			}
+
+			var roundState = roundStates.SingleOrDefault(rs => rs.Id == roundVerifier.RoundId);
+
+			switch (roundState?.Phase)
+			{
+				case Rounds.Phase.InputRegistration:
+					if (!roundVerifier.IsStarted
+						&& roundState.InputRegistrationEnd - DateTimeOffset.UtcNow < WabiSabiConfig.CoinVerifierStartBefore)
+					{
+						// Start verifications before the end Input registration.
+						roundVerifier.Start();
+					}
+					break;
+
+				default:
+					roundVerifier.Close();
+					break;
+			}
+		}
 	}
 }

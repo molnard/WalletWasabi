@@ -85,6 +85,8 @@ public partial class Arena : PeriodicRunner
 
 			// RoundStates have to contain all states. Do not change stateId=0.
 			SetRoundStates();
+
+			CoinVerifier?.StepRoundVerifiers(RoundStates, cancel);
 		}
 		var duration = DateTimeOffset.UtcNow - before;
 		RequestTimeStatista.Instance.Add("arena-period", duration);

@@ -12,6 +12,7 @@ using WalletWasabi.WabiSabi.Models.MultipartyTransaction;
 using WalletWasabi.Logging;
 using WalletWasabi.Crypto.Randomness;
 using WalletWasabi.WabiSabi.Backend.DoSPrevention;
+using NBitcoin.RPC;
 
 namespace WalletWasabi.WabiSabi.Backend.Rounds;
 
@@ -32,7 +33,7 @@ public partial class Arena : IWabiSabiApiRequestHandler
 
 	private async Task<InputRegistrationResponse> RegisterInputCoreAsync(InputRegistrationRequest request, CancellationToken cancellationToken)
 	{
-		var coin = await OutpointToCoinAsync(request, cancellationToken).ConfigureAwait(false);
+		var (coin, txOutResponse) = await OutpointToCoinAsync(request, cancellationToken).ConfigureAwait(false);
 
 		using (await AsyncLock.LockAsync(cancellationToken).ConfigureAwait(false))
 		{
@@ -113,6 +114,8 @@ public partial class Arena : IWabiSabiApiRequestHandler
 			var commitVsizeCredentialResponse = await vsizeCredentialTask.ConfigureAwait(false);
 
 			alice.SetDeadlineRelativeTo(round.ConnectionConfirmationTimeFrame.Duration);
+
+			CoinVerifier?.AddAlice(alice, txOutResponse);
 			round.Alices.Add(alice);
 
 			return new(alice.Id,
@@ -355,7 +358,7 @@ public partial class Arena : IWabiSabiApiRequestHandler
 			await zeroVsizeTask.ConfigureAwait(false));
 	}
 
-	public async Task<Coin> OutpointToCoinAsync(InputRegistrationRequest request, CancellationToken cancellationToken)
+	public async Task<(Coin Coin, GetTxOutResponse TxOutResponse)> OutpointToCoinAsync(InputRegistrationRequest request, CancellationToken cancellationToken)
 	{
 		OutPoint input = request.Input;
 
@@ -391,7 +394,9 @@ public partial class Arena : IWabiSabiApiRequestHandler
 			throw new WabiSabiProtocolException(WabiSabiProtocolErrorCode.InputImmature);
 		}
 
-		return new Coin(input, txOutResponse.TxOut);
+		var coin = new Coin(input, txOutResponse.TxOut);
+
+		return (coin, txOutResponse);
 	}
 
 	public Task<RoundStateResponse> GetStatusAsync(RoundStateRequest request, CancellationToken cancellationToken)

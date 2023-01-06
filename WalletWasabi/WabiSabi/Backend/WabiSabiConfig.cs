@@ -128,6 +128,10 @@ public class WabiSabiConfig : ConfigBase
 	[JsonProperty(PropertyName = "CoinVerifierApiAuthToken", DefaultValueHandling = DefaultValueHandling.Populate)]
 	public string CoinVerifierApiAuthToken { get; set; } = "";
 
+	[DefaultValueTimeSpan("0d 0h 2m 0s")]
+	[JsonProperty(PropertyName = "CoinVerifierStartBefore", DefaultValueHandling = DefaultValueHandling.Populate)]
+	public TimeSpan CoinVerifierStartBefore { get; set; } = TimeSpan.FromMinutes(2);
+
 	[DefaultValueTimeSpan("31d 0h 0m 0s")]
 	[JsonProperty(PropertyName = "ReleaseFromWhitelistAfter", DefaultValueHandling = DefaultValueHandling.Populate)]
 	public TimeSpan ReleaseFromWhitelistAfter { get; set; } = TimeSpan.FromDays(31);
