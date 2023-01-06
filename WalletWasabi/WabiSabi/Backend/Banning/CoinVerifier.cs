@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
+using System.Threading.Tasks;
 using WalletWasabi.Logging;
 using WalletWasabi.WabiSabi.Backend.Models;
 using WalletWasabi.WabiSabi.Backend.Rounds.CoinJoinStorage;
@@ -38,28 +39,10 @@ public class CoinVerifier
 	private CoinJoinIdStore CoinJoinIdStore { get; }
 	private CoinVerifierApiClient CoinVerifierApiClient { get; }
 
-	private Dictionary<uint256, RoundVerifier> RoundVerifiers { get; } = new Dictionary<uint256, RoundVerifier>();
+	private Dictionary<uint256, RoundVerifier> RoundVerifiers { get; } = new();
 
-	private bool CheckIfAlreadyVerified(Coin coin)
+	public async IAsyncEnumerable<CoinVerifyInfo> VerifyCoinsAsync(IEnumerable<Coin> coinsToCheck, [EnumeratorCancellation] CancellationToken cancellationToken, uint256 roundId)
 	{
-		// Step 1: Check if address is whitelisted.
-		if (Whitelist.TryGet(coin.Outpoint, out _))
-		{
-			return true;
-		}
-
-		// Step 2: Check if address is from a coinjoin.
-		if (CoinJoinIdStore.Contains(coin.Outpoint.Hash))
-		{
-			return true;
-		}
-
-		return false;
-	}
-
-	public async IAsyncEnumerable<CoinVerifyInfo> VerifyCoinsAsync(IEnumerable<Coin> coinsToCheck, [EnumeratorCancellation] CancellationToken cancellationToken, string roundId = "")
-	{
-		// TODO: impelement NEW logic!!!
 		var before = DateTimeOffset.UtcNow;
 
 		using CancellationTokenSource cancellationTokenSource = new(TimeSpan.FromSeconds(30));
@@ -68,38 +51,22 @@ public class CoinVerifier
 		var lastChangeId = Whitelist.ChangeId;
 		Whitelist.RemoveAllExpired(WabiSabiConfig.ReleaseFromWhitelistAfter);
 
-		var scriptsToCheck = new HashSet<Script>();
-		var innocentsCounter = 0;
+		var roundVerifier = RoundVerifiers[roundId];
+		var tasks = roundVerifier.CoinResults.Values.Select(x => x.Task);
 
-		foreach (var coin in coinsToCheck)
+		do
 		{
-			if (CheckIfAlreadyVerified(coin))
+			var completedTask = await Task.WhenAny(tasks).ConfigureAwait(false);
+			var coinVerifyInfo = await completedTask.ConfigureAwait(false);
+
+			if (!coinVerifyInfo.ShouldBan)
 			{
-				innocentsCounter++;
-				yield return new CoinVerifyInfo(false, coin);
+				Whitelist.Add(coinVerifyInfo.Coin.Outpoint);
 			}
-			else
-			{
-				scriptsToCheck.Add(coin.ScriptPubKey);
-			}
+
+			yield return coinVerifyInfo;
 		}
-
-		Logger.LogInfo($"{innocentsCounter} out of {coinsToCheck.Count()} utxo is already verified in Round({roundId}).");
-		await foreach (var response in CoinVerifierApiClient.VerifyScriptsAsync(scriptsToCheck, linkedCts.Token))
-		{
-			bool shouldBanUtxo = CheckForFlags(response.ApiResponseItem);
-
-			// Find all coins with the same script (address reuse).
-			foreach (var coin in coinsToCheck.Where(c => c.ScriptPubKey == response.ScriptPubKey))
-			{
-				if (!shouldBanUtxo)
-				{
-					Whitelist.Add(coin.Outpoint);
-				}
-
-				yield return new CoinVerifyInfo(shouldBanUtxo, coin);
-			}
-		}
+		while (!cancellationTokenSource.IsCancellationRequested);
 
 		if (Whitelist.ChangeId != lastChangeId)
 		{
@@ -108,28 +75,6 @@ public class CoinVerifier
 
 		var duration = DateTimeOffset.UtcNow - before;
 		RequestTimeStatista.Instance.Add("verifier-period", duration);
-	}
-
-	private bool CheckForFlags(ApiResponseItem response)
-	{
-		bool shouldBan = false;
-
-		if (WabiSabiConfig.RiskFlags is null)
-		{
-			return shouldBan;
-		}
-
-		var flagIds = response.Cscore_section.Cscore_info.Select(cscores => cscores.Id);
-
-		if (flagIds.Except(WabiSabiConfig.RiskFlags).Any())
-		{
-			var unknownIds = flagIds.Except(WabiSabiConfig.RiskFlags).ToList();
-			unknownIds.ForEach(id => Logger.LogWarning($"Flag {id} is unknown for the backend!"));
-		}
-
-		shouldBan = flagIds.Any(id => WabiSabiConfig.RiskFlags.Contains(id));
-
-		return shouldBan;
 	}
 
 	internal void AddAlice(Alice alice, GetTxOutResponse txOutResponse)
@@ -150,7 +95,7 @@ public class CoinVerifier
 
 		foreach (var newRoundId in newRoundIds)
 		{
-			var newVerifier = new RoundVerifier(newRoundId);
+			var newVerifier = new RoundVerifier(newRoundId, Whitelist, CoinJoinIdStore, CoinVerifierApiClient, WabiSabiConfig);
 			RoundVerifiers.Add(newRoundId, newVerifier);
 		}
 
@@ -172,7 +117,7 @@ public class CoinVerifier
 						&& roundState.InputRegistrationEnd - DateTimeOffset.UtcNow < WabiSabiConfig.CoinVerifierStartBefore)
 					{
 						// Start verifications before the end Input registration.
-						roundVerifier.Start();
+						roundVerifier.Start(cancel);
 					}
 					break;
 

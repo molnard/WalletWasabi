@@ -128,7 +128,7 @@ public partial class Arena : PeriodicRunner
 						int banCounter = 0;
 						var aliceDictionary = round.Alices.Where(x => !x.IsPayingZeroCoordinationFee).ToDictionary(a => a.Coin, a => a);
 						IEnumerable<Coin> coinsToCheck = aliceDictionary.Values.Select(x => x.Coin);
-						await foreach (var coinVerifyInfo in CoinVerifier.VerifyCoinsAsync(coinsToCheck, cancel, round.Id.ToString()).ConfigureAwait(false))
+						await foreach (var coinVerifyInfo in CoinVerifier.VerifyCoinsAsync(coinsToCheck, cancel, round.Id).ConfigureAwait(false))
 						{
 							if (coinVerifyInfo.ShouldBan)
 							{

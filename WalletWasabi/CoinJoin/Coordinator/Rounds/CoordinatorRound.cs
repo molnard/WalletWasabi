@@ -647,7 +647,7 @@ public class CoordinatorRound
 		try
 		{
 			var coinsToCheck = Alices.SelectMany(a => a.Inputs);
-			await foreach (var info in CoinVerifier.VerifyCoinsAsync(coinsToCheck, CancellationToken.None, RoundId.ToString()))
+			await foreach (var info in CoinVerifier.VerifyCoinsAsync(coinsToCheck, CancellationToken.None, new uint256((ulong)RoundId)))
 			{
 				if (info.ShouldBan)
 				{
