@@ -34,37 +34,58 @@ public class RoundVerifier
 	public bool IsStarted { get; private set; }
 
 	private Channel<CoinVerifyItem> CoinVerifyItems { get; } = Channel.CreateUnbounded<CoinVerifyItem>();
-	public ConcurrentDictionary<Coin, TaskCompletionSource<CoinVerifyInfo>> CoinResults { get; } = new();
-	private Task? Task { get; set; }
+	private ConcurrentDictionary<Coin, TaskCompletionSource<CoinVerifyInfo>> CoinResults { get; } = new();
+	public bool IsClosed { get; private set; }
 
 	public void AddCoin(Coin coin, GetTxOutResponse txOutResponse, bool? oneHopCoin = null)
 	{
+		if (IsClosed)
+		{
+			throw new InvalidOperationException($"Adding coin for {nameof(RoundVerifier)} is closed for round '{RoundId}'.");
+		}
+
 		CoinVerifyItems.Writer.TryWrite(new CoinVerifyItem(coin, txOutResponse, oneHopCoin));
 		CoinResults.TryAdd(coin, new TaskCompletionSource<CoinVerifyInfo>());
 	}
 
-	internal void Close()
+	public IEnumerable<Task<CoinVerifyInfo>> CloseAndGetCoinResultsTasks()
 	{
-		throw new NotImplementedException();
+		IsClosed = true;
+		return CoinResults.Values.Select(x => x.Task);
 	}
 
 	public void Start(CancellationToken cancel)
 	{
 		if (IsStarted)
 		{
-			throw new InvalidOperationException($"{nameof(RoundVerifier)} already started.");
+			throw new InvalidOperationException($"{nameof(RoundVerifier)} already started for round '{RoundId}'.");
 		}
 
 		IsStarted = true;
 
-		Task = VerifyAllAsync(cancel);
+		_ = VerifyAllAsync(cancel);
 	}
 
 	private async Task VerifyAllAsync(CancellationToken cancel)
 	{
 		do
 		{
-			await CoinVerifyItems.Reader.WaitToReadAsync(cancel).ConfigureAwait(false);
+			using CancellationTokenSource periodicCheck = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+			using CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(periodicCheck.Token, cancel);
+
+			try
+			{
+				await CoinVerifyItems.Reader.WaitToReadAsync(linked.Token).ConfigureAwait(false);
+			}
+			catch (OperationCanceledException)
+			{
+				if (!periodicCheck.IsCancellationRequested)
+				{
+					// The whole operation was cancelled.
+					throw;
+				}
+			}
+
 			await foreach (var coinVerifyItem in CoinVerifyItems.Reader.ReadAllAsync(cancel))
 			{
 				var taskCompletionSourceToSet = CoinResults[coinVerifyItem.Coin];
@@ -72,7 +93,7 @@ public class RoundVerifier
 				{
 					try
 					{
-						var coinVerifyInfo = await VerifyCoinAsync(coinVerifyItem, taskCompletionSourceToSet).ConfigureAwait(false);
+						var coinVerifyInfo = await VerifyCoinAsync(coinVerifyItem).ConfigureAwait(false);
 						if (!coinVerifyInfo.ShouldBan)
 						{
 							Whitelist.Add(coinVerifyItem.Coin.Outpoint);
@@ -91,11 +112,17 @@ public class RoundVerifier
 					}
 				};
 			}
+
+			if (IsClosed)
+			{
+				// We are out of items and no more expected.
+				break;
+			}
 		}
 		while (!cancel.IsCancellationRequested);
 	}
 
-	private async Task<CoinVerifyInfo> VerifyCoinAsync(CoinVerifyItem coinVerifyItem, TaskCompletionSource<CoinVerifyInfo> taskCompletionSourceToSet)
+	private async Task<CoinVerifyInfo> VerifyCoinAsync(CoinVerifyItem coinVerifyItem)
 	{
 		using CancellationTokenSource cts = new(TimeSpan.FromMinutes(2));
 		var coin = coinVerifyItem.Coin;
@@ -147,7 +174,7 @@ public class RoundVerifier
 		if (flagIds.Except(WabiSabiConfig.RiskFlags).Any())
 		{
 			var unknownIds = flagIds.Except(WabiSabiConfig.RiskFlags).ToList();
-			unknownIds.ForEach(id => Logger.LogWarning($"Flag {id} is unknown for the backend!"));
+			unknownIds.ForEach(id => Logger.LogWarning($"Flag {id} is unknown for the backend for round '{RoundId}'."));
 		}
 
 		shouldBan = flagIds.Any(id => WabiSabiConfig.RiskFlags.Contains(id));

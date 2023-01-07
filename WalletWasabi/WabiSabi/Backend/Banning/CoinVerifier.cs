@@ -46,7 +46,8 @@ public class CoinVerifier
 		var before = DateTimeOffset.UtcNow;
 
 		var roundVerifier = RoundVerifiers[roundId];
-		var tasks = roundVerifier.CoinResults.Values.Select(x => x.Task);
+
+		var tasks = roundVerifier.CloseAndGetCoinResultsTasks();
 
 		do
 		{
@@ -114,7 +115,7 @@ public class CoinVerifier
 					break;
 
 				default:
-					roundVerifier.Close();
+					_ = roundVerifier.CloseAndGetCoinResultsTasks();
 					break;
 			}
 		}
