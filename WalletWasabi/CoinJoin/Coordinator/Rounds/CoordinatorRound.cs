@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
+using System.Threading.Channels;
 using System.Threading.Tasks;
 using WalletWasabi.BitcoinCore.Rpc;
 using WalletWasabi.CoinJoin.Common.Models;
@@ -646,7 +647,9 @@ public class CoordinatorRound
 		List<OutPoint> inputsToBan = new();
 		try
 		{
-			await foreach (var info in CoinVerifier.VerifyCoinsAsync(CancellationToken.None, new uint256((ulong)RoundId)))
+			using CancellationTokenSource cancellationTokenSource = new(TimeSpan.FromSeconds(30));
+
+			await foreach (var info in CoinVerifier.VerifyCoinsAsync(cancellationTokenSource.Token, new uint256((ulong)RoundId)))
 			{
 				if (info.ShouldBan)
 				{

@@ -127,7 +127,11 @@ public partial class Arena : PeriodicRunner
 					{
 						var aliceDictionary = round.Alices.ToDictionary(a => a.Coin, a => a);
 						int banCounter = 0;
-						await foreach (var coinVerifyInfo in CoinVerifier.VerifyCoinsAsync(cancel, round.Id).ConfigureAwait(false))
+
+						using CancellationTokenSource cancellationTokenSource = new(TimeSpan.FromSeconds(30));
+						using CancellationTokenSource linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationTokenSource.Token, cancel);
+
+						await foreach (var coinVerifyInfo in CoinVerifier.VerifyCoinsAsync(linkedCts.Token, round.Id).ConfigureAwait(false))
 						{
 							Alice aliceToPunish = aliceDictionary[coinVerifyInfo.Coin];
 							if (coinVerifyInfo.ShouldBan)

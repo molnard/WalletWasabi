@@ -45,9 +45,6 @@ public class CoinVerifier
 	{
 		var before = DateTimeOffset.UtcNow;
 
-		using CancellationTokenSource cancellationTokenSource = new(TimeSpan.FromSeconds(30));
-		using CancellationTokenSource linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationTokenSource.Token, cancellationToken);
-
 		var lastChangeId = Whitelist.ChangeId;
 		Whitelist.RemoveAllExpired(WabiSabiConfig.ReleaseFromWhitelistAfter);
 
@@ -57,8 +54,8 @@ public class CoinVerifier
 		do
 		{
 			// TODO handle timeout!!
-			var completedTask = await Task.WhenAny(tasks).WaitAsync(linkedCts.Token).ConfigureAwait(false);
-			var coinVerifyInfo = await completedTask.WaitAsync(linkedCts.Token).ConfigureAwait(false);
+			var completedTask = await Task.WhenAny(tasks).WaitAsync(cancellationToken).ConfigureAwait(false);
+			var coinVerifyInfo = await completedTask.WaitAsync(cancellationToken).ConfigureAwait(false);
 
 			if (!coinVerifyInfo.ShouldBan)
 			{
@@ -67,7 +64,7 @@ public class CoinVerifier
 
 			yield return coinVerifyInfo;
 		}
-		while (!linkedCts.IsCancellationRequested);
+		while (!cancellationToken.IsCancellationRequested);
 
 		if (Whitelist.ChangeId != lastChangeId)
 		{
