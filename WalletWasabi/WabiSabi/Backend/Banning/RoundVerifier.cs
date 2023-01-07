@@ -33,13 +33,13 @@ public class RoundVerifier
 	public WabiSabiConfig WabiSabiConfig { get; }
 	public bool IsStarted { get; private set; }
 
-	private Channel<AliceVerifyItem> AliceVerifyItems { get; } = Channel.CreateUnbounded<AliceVerifyItem>();
+	private Channel<CoinVerifyItem> CoinVerifyItems { get; } = Channel.CreateUnbounded<CoinVerifyItem>();
 	public ConcurrentDictionary<Coin, TaskCompletionSource<CoinVerifyInfo>> CoinResults { get; } = new();
 	private Task? Task { get; set; }
 
 	public void AddCoin(Coin coin, GetTxOutResponse txOutResponse, bool? oneHopCoin = null)
 	{
-		AliceVerifyItems.Writer.TryWrite(new AliceVerifyItem(coin, txOutResponse, oneHopCoin));
+		CoinVerifyItems.Writer.TryWrite(new CoinVerifyItem(coin, txOutResponse, oneHopCoin));
 		CoinResults.TryAdd(coin, new TaskCompletionSource<CoinVerifyInfo>());
 	}
 
@@ -64,15 +64,20 @@ public class RoundVerifier
 	{
 		do
 		{
-			await AliceVerifyItems.Reader.WaitToReadAsync(cancel).ConfigureAwait(false);
-			await foreach (var alice in AliceVerifyItems.Reader.ReadAllAsync(cancel))
+			await CoinVerifyItems.Reader.WaitToReadAsync(cancel).ConfigureAwait(false);
+			await foreach (var coinVerifyItem in CoinVerifyItems.Reader.ReadAllAsync(cancel))
 			{
-				var taskCompletionSourceToSet = CoinResults[alice.Coin];
+				var taskCompletionSourceToSet = CoinResults[coinVerifyItem.Coin];
 				var _ = async () =>
 				{
 					try
 					{
-						var coinVerifyInfo = await VerifyCoinAsync(alice, taskCompletionSourceToSet).ConfigureAwait(false);
+						var coinVerifyInfo = await VerifyCoinAsync(coinVerifyItem, taskCompletionSourceToSet).ConfigureAwait(false);
+						if (!coinVerifyInfo.ShouldBan)
+						{
+							Whitelist.Add(coinVerifyItem.Coin.Outpoint);
+						}
+
 						taskCompletionSourceToSet.SetResult(coinVerifyInfo);
 					}
 					catch (OperationCanceledException)
@@ -90,13 +95,13 @@ public class RoundVerifier
 		while (!cancel.IsCancellationRequested);
 	}
 
-	private async Task<CoinVerifyInfo> VerifyCoinAsync(AliceVerifyItem aliceVerifyItem, TaskCompletionSource<CoinVerifyInfo> taskCompletionSourceToSet)
+	private async Task<CoinVerifyInfo> VerifyCoinAsync(CoinVerifyItem coinVerifyItem, TaskCompletionSource<CoinVerifyInfo> taskCompletionSourceToSet)
 	{
 		using CancellationTokenSource cts = new(TimeSpan.FromMinutes(2));
-		var coin = aliceVerifyItem.Coin;
+		var coin = coinVerifyItem.Coin;
 
 		// Check if coin is one hop.
-		if (aliceVerifyItem.OneHopCoin is true)
+		if (coinVerifyItem.OneHopCoin is true)
 		{
 			return new CoinVerifyInfo(false, false, coin);
 		}
@@ -113,19 +118,19 @@ public class RoundVerifier
 			return new CoinVerifyInfo(false, false, coin);
 		}
 
-		// Big coin, under CA minimum confirmation requirement cannot register.
+		// Coin amount bigger than x and under CA minimum confirmation requirement cannot register.
 		if (coin.Amount >= WabiSabiConfig.CoinVerifierRequiredConfirmationAmount
-			&& aliceVerifyItem.TxOutResponse.Confirmations < WabiSabiConfig.CoinVerifierRequiredConfirmation)
+			&& coinVerifyItem.TxOutResponse.Confirmations < WabiSabiConfig.CoinVerifierRequiredConfirmation)
 		{
 			// https://github.com/zkSNACKs/CoinVerifier/issues/11
 			// Should not ban but removed.
-			return new CoinVerifyInfo(false, true, coin);
+			return new CoinVerifyInfo(ShouldBan: false, ShouldRemove: true, coin);
 		}
 
 		var apiResponse = await CoinVerifierApiClient.SendRequestAsync(coin.ScriptPubKey, cts.Token).ConfigureAwait(false);
 		bool shouldBanUtxo = CheckForFlags(apiResponse);
 
-		return new CoinVerifyInfo(shouldBanUtxo, shouldBanUtxo, coin);
+		return new CoinVerifyInfo(ShouldBan: shouldBanUtxo, ShouldRemove: shouldBanUtxo, coin);
 	}
 
 	private bool CheckForFlags(ApiResponseItem response)
@@ -150,5 +155,5 @@ public class RoundVerifier
 		return shouldBan;
 	}
 
-	private record AliceVerifyItem(Coin Coin, GetTxOutResponse TxOutResponse, bool? OneHopCoin = null);
+	private record CoinVerifyItem(Coin Coin, GetTxOutResponse TxOutResponse, bool? OneHopCoin = null);
 }

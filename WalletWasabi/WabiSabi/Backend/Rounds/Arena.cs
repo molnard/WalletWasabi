@@ -126,7 +126,6 @@ public partial class Arena : PeriodicRunner
 					try
 					{
 						var aliceDictionary = round.Alices.ToDictionary(a => a.Coin, a => a);
-
 						int banCounter = 0;
 						await foreach (var coinVerifyInfo in CoinVerifier.VerifyCoinsAsync(cancel, round.Id).ConfigureAwait(false))
 						{
