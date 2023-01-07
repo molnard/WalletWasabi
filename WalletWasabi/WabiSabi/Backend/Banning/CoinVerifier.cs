@@ -45,9 +45,6 @@ public class CoinVerifier
 	{
 		var before = DateTimeOffset.UtcNow;
 
-		var lastChangeId = Whitelist.ChangeId;
-		Whitelist.RemoveAllExpired(WabiSabiConfig.ReleaseFromWhitelistAfter);
-
 		var roundVerifier = RoundVerifiers[roundId];
 		var tasks = roundVerifier.CoinResults.Values.Select(x => x.Task);
 
@@ -66,10 +63,7 @@ public class CoinVerifier
 		}
 		while (!cancellationToken.IsCancellationRequested);
 
-		if (Whitelist.ChangeId != lastChangeId)
-		{
-			Whitelist.WriteToFile();
-		}
+		Whitelist.WriteToFileIfChanged();
 
 		var duration = DateTimeOffset.UtcNow - before;
 		RequestTimeStatista.Instance.Add("verifier-period", duration);

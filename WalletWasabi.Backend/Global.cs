@@ -97,24 +97,25 @@ public class Global : IDisposable
 		{
 			try
 			{
-				if (!Uri.TryCreate(CoordinatorParameters.RuntimeCoordinatorConfig.CoinVerifierApiUrl, UriKind.RelativeOrAbsolute, out Uri? url))
+				var wabiSabiConfig = CoordinatorParameters.RuntimeCoordinatorConfig;
+				if (!Uri.TryCreate(wabiSabiConfig.CoinVerifierApiUrl, UriKind.RelativeOrAbsolute, out Uri? url))
 				{
 					throw new ArgumentException($"Blacklist API URL is invalid in {nameof(WabiSabiConfig)}.");
 				}
-				if (string.IsNullOrEmpty(CoordinatorParameters.RuntimeCoordinatorConfig.CoinVerifierApiAuthToken))
+				if (string.IsNullOrEmpty(wabiSabiConfig.CoinVerifierApiAuthToken))
 				{
 					throw new ArgumentException($"Blacklist API token was not provided in {nameof(WabiSabiConfig)}.");
 				}
-				if (CoordinatorParameters.RuntimeCoordinatorConfig.RiskFlags is null)
+				if (wabiSabiConfig.RiskFlags is null)
 				{
 					throw new ArgumentException($"Risk indicators were not provided in {nameof(WabiSabiConfig)}.");
 				}
 
 				HttpClient.BaseAddress = url;
 
-				var coinVerifierApiClient = new CoinVerifierApiClient(CoordinatorParameters.RuntimeCoordinatorConfig.CoinVerifierApiAuthToken, RpcClient.Network, HttpClient);
-				var whitelist = await Whitelist.CreateAndLoadFromFileAsync(CoordinatorParameters.WhitelistFilePath, cancel).ConfigureAwait(false);
-				coinVerifier = new(CoinJoinIdStore, coinVerifierApiClient, whitelist, CoordinatorParameters.RuntimeCoordinatorConfig);
+				var coinVerifierApiClient = new CoinVerifierApiClient(wabiSabiConfig.CoinVerifierApiAuthToken, RpcClient.Network, HttpClient);
+				var whitelist = await Whitelist.CreateAndLoadFromFileAsync(CoordinatorParameters.WhitelistFilePath, wabiSabiConfig, cancel).ConfigureAwait(false);
+				coinVerifier = new(CoinJoinIdStore, coinVerifierApiClient, whitelist, wabiSabiConfig);
 				CoinVerifier = coinVerifier;
 				Logger.LogInfo("CoinVerifier created successfully.");
 			}
