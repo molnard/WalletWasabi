@@ -646,7 +646,7 @@ public class CoordinatorRound
 		List<OutPoint> inputsToBan = new();
 		try
 		{
-			await foreach (var info in CoinVerifier.VerifyCoinsAsync(coins, CancellationToken.None, new uint256((ulong)RoundId)))
+			await foreach (var info in CoinVerifier.VerifyCoinsAsync(CancellationToken.None, new uint256((ulong)RoundId)))
 			{
 				if (info.ShouldBan)
 				{

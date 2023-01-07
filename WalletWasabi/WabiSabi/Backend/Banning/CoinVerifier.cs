@@ -13,7 +13,7 @@ using WalletWasabi.WabiSabi.Models;
 
 namespace WalletWasabi.WabiSabi.Backend.Banning;
 
-public record CoinVerifyInfo(bool ShouldBan, Coin Coin);
+public record CoinVerifyInfo(bool ShouldBan, bool ShouldRemove, Coin Coin);
 
 public class CoinVerifier
 {
@@ -78,15 +78,15 @@ public class CoinVerifier
 		RequestTimeStatista.Instance.Add("verifier-period", duration);
 	}
 
-	internal void AddAlice(Alice alice, GetTxOutResponse txOutResponse)
+	public void AddCoin(uint256 roundId, Coin coin, GetTxOutResponse txOutResponse, bool? oneHopCoin = null)
 	{
-		if (RoundVerifiers.TryGetValue(alice.Round.Id, out var roundVerifier))
+		if (RoundVerifiers.TryGetValue(roundId, out var roundVerifier))
 		{
-			roundVerifier.AddAlice(alice, txOutResponse);
+			roundVerifier.AddCoin(coin, txOutResponse, oneHopCoin);
 			return;
 		}
 
-		throw new InvalidOperationException($"Could not find {nameof(RoundVerifier)} for round:'{alice.Round.Id}'.");
+		throw new InvalidOperationException($"Could not find {nameof(RoundVerifier)} for round:'{roundId}'.");
 	}
 
 	internal void StepRoundVerifiers(IEnumerable<RoundState> roundStates, CancellationToken cancel)

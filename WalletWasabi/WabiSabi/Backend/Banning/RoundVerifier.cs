@@ -37,10 +37,10 @@ public class RoundVerifier
 	public ConcurrentDictionary<Coin, TaskCompletionSource<CoinVerifyInfo>> CoinResults { get; } = new();
 	private Task? Task { get; set; }
 
-	public void AddAlice(Alice alice, GetTxOutResponse txOutResponse)
+	public void AddCoin(Coin coin, GetTxOutResponse txOutResponse, bool? oneHopCoin = null)
 	{
-		AliceVerifyItems.Writer.TryWrite(new AliceVerifyItem(alice.Coin, alice, txOutResponse));
-		CoinResults.TryAdd(alice.Coin, new TaskCompletionSource<CoinVerifyInfo>());
+		AliceVerifyItems.Writer.TryWrite(new AliceVerifyItem(coin, txOutResponse, oneHopCoin));
+		CoinResults.TryAdd(coin, new TaskCompletionSource<CoinVerifyInfo>());
 	}
 
 	internal void Close()
@@ -95,22 +95,22 @@ public class RoundVerifier
 		using CancellationTokenSource cts = new(TimeSpan.FromMinutes(2));
 		var coin = aliceVerifyItem.Coin;
 
+		// Check if coin is one hop.
+		if (aliceVerifyItem.OneHopCoin is true)
+		{
+			return new CoinVerifyInfo(false, false, coin);
+		}
+
 		// Check if address is whitelisted.
 		if (Whitelist.TryGet(coin.Outpoint, out _))
 		{
-			return new CoinVerifyInfo(false, coin);
+			return new CoinVerifyInfo(false, false, coin);
 		}
 
 		// Check if address is from a coinjoin.
 		if (CoinJoinIdStore.Contains(coin.Outpoint.Hash))
 		{
-			return new CoinVerifyInfo(false, coin);
-		}
-
-		// Check if coin is not paying - one hop.
-		if (aliceVerifyItem.Alice.IsPayingZeroCoordinationFee)
-		{
-			return new CoinVerifyInfo(false, coin);
+			return new CoinVerifyInfo(false, false, coin);
 		}
 
 		// Big coin, under CA minimum confirmation requirement cannot register.
@@ -119,13 +119,13 @@ public class RoundVerifier
 		{
 			// https://github.com/zkSNACKs/CoinVerifier/issues/11
 			// Should not ban but removed.
-			return new CoinVerifyInfo(false, coin);
+			return new CoinVerifyInfo(false, true, coin);
 		}
 
 		var apiResponse = await CoinVerifierApiClient.SendRequestAsync(coin.ScriptPubKey, cts.Token).ConfigureAwait(false);
 		bool shouldBanUtxo = CheckForFlags(apiResponse);
 
-		return new CoinVerifyInfo(shouldBanUtxo, coin);
+		return new CoinVerifyInfo(shouldBanUtxo, shouldBanUtxo, coin);
 	}
 
 	private bool CheckForFlags(ApiResponseItem response)
@@ -134,7 +134,7 @@ public class RoundVerifier
 
 		if (WabiSabiConfig.RiskFlags is null)
 		{
-			return shouldBan;
+			return false;
 		}
 
 		var flagIds = response.Cscore_section.Cscore_info.Select(cscores => cscores.Id);
@@ -150,5 +150,5 @@ public class RoundVerifier
 		return shouldBan;
 	}
 
-	private record AliceVerifyItem(Coin Coin, Alice Alice, GetTxOutResponse TxOutResponse);
+	private record AliceVerifyItem(Coin Coin, GetTxOutResponse TxOutResponse, bool? OneHopCoin = null);
 }

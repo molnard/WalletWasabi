@@ -69,6 +69,7 @@ public partial class Arena : IWabiSabiApiRequestHandler
 			var id = new Guid(SecureRandom.Instance.GetBytes(16));
 
 			var isPayingZeroCoordinationFee = CoinJoinIdStore.Contains(coin.Outpoint.Hash);
+			var oneHop = false;
 
 			if (!isPayingZeroCoordinationFee)
 			{
@@ -78,6 +79,7 @@ public partial class Arena : IWabiSabiApiRequestHandler
 				if (tx.Inputs.All(input => CoinJoinIdStore.Contains(input.PrevOut.Hash)))
 				{
 					isPayingZeroCoordinationFee = true;
+					oneHop = true;
 				}
 			}
 
@@ -115,7 +117,7 @@ public partial class Arena : IWabiSabiApiRequestHandler
 
 			alice.SetDeadlineRelativeTo(round.ConnectionConfirmationTimeFrame.Duration);
 
-			CoinVerifier?.AddAlice(alice, txOutResponse);
+			CoinVerifier?.AddCoin(round.Id, coin, txOutResponse, oneHop);
 			round.Alices.Add(alice);
 
 			return new(alice.Id,

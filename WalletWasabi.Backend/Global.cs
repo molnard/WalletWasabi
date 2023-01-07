@@ -75,6 +75,7 @@ public class Global : IDisposable
 
 	public CoinJoinIdStore CoinJoinIdStore { get; }
 	public WabiSabiCoordinator? WabiSabiCoordinator { get; private set; }
+	public CoinVerifier? CoinVerifier { get; private set; }
 
 	public async Task InitializeAsync(CoordinatorRoundConfig roundConfig, CancellationToken cancel)
 	{
@@ -114,6 +115,7 @@ public class Global : IDisposable
 				var coinVerifierApiClient = new CoinVerifierApiClient(CoordinatorParameters.RuntimeCoordinatorConfig.CoinVerifierApiAuthToken, RpcClient.Network, HttpClient);
 				var whitelist = await Whitelist.CreateAndLoadFromFileAsync(CoordinatorParameters.WhitelistFilePath, cancel).ConfigureAwait(false);
 				coinVerifier = new(CoinJoinIdStore, coinVerifierApiClient, whitelist, CoordinatorParameters.RuntimeCoordinatorConfig);
+				CoinVerifier = coinVerifier;
 				Logger.LogInfo("CoinVerifier created successfully.");
 			}
 			catch (Exception exc)

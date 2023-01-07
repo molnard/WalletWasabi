@@ -125,16 +125,21 @@ public partial class Arena : PeriodicRunner
 				{
 					try
 					{
+						var aliceDictionary = round.Alices.ToDictionary(a => a.Coin, a => a);
+
 						int banCounter = 0;
-						var aliceDictionary = round.Alices.Where(x => !x.IsPayingZeroCoordinationFee).ToDictionary(a => a.Coin, a => a);
-						IEnumerable<Coin> coinsToCheck = aliceDictionary.Values.Select(x => x.Coin);
-						await foreach (var coinVerifyInfo in CoinVerifier.VerifyCoinsAsync(coinsToCheck, cancel, round.Id).ConfigureAwait(false))
+						await foreach (var coinVerifyInfo in CoinVerifier.VerifyCoinsAsync(cancel, round.Id).ConfigureAwait(false))
 						{
+							Alice aliceToPunish = aliceDictionary[coinVerifyInfo.Coin];
 							if (coinVerifyInfo.ShouldBan)
 							{
 								banCounter++;
-								Alice aliceToPunish = aliceDictionary[coinVerifyInfo.Coin];
+
 								Prison.Ban(aliceToPunish, round.Id, isLongBan: true);
+								round.Alices.Remove(aliceToPunish);
+							}
+							else if (coinVerifyInfo.ShouldRemove)
+							{
 								round.Alices.Remove(aliceToPunish);
 							}
 						}

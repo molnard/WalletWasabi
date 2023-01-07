@@ -1,5 +1,6 @@
 #pragma warning disable CS8625 // Cannot convert null literal to non-nullable reference type.
 #pragma warning disable CS8619 // Nullability of reference types in value doesn't match target type.
+
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Caching.Memory;
@@ -22,6 +23,7 @@ using WalletWasabi.CoinJoin.Coordinator.Rounds;
 using WalletWasabi.Extensions;
 using WalletWasabi.Helpers;
 using WalletWasabi.Logging;
+using WalletWasabi.WabiSabi.Backend.Banning;
 using static WalletWasabi.Crypto.SchnorrBlinding;
 
 namespace WalletWasabi.Backend.Controllers;
@@ -44,6 +46,7 @@ public class ChaumianCoinJoinController : ControllerBase
 	private IRPCClient RpcClient => Global.RpcClient;
 	private Network Network => Global.Config.Network;
 	private Coordinator Coordinator => Global.Coordinator;
+	private CoinVerifier? CoinVerifier => Global.CoinVerifier;
 
 	private static AsyncLock InputsLock { get; } = new AsyncLock();
 	private static AsyncLock OutputLock { get; } = new AsyncLock();
@@ -202,6 +205,7 @@ public class ChaumianCoinJoinController : ControllerBase
 				uint256 blindedOutputScriptsHash = new(Hashes.SHA256(blindedOutputScriptHashesByte));
 
 				var inputs = new HashSet<Coin>();
+				var coinAndTxOutResponses = new Dictionary<Coin, GetTxOutResponse>();
 
 				var allInputsConfirmed = true;
 				foreach (var responses in getTxOutResponses)
@@ -242,7 +246,9 @@ public class ChaumianCoinJoinController : ControllerBase
 						return BadRequest("Provided proof is invalid.");
 					}
 
+					var coin = new Coin(inputProof.Input, txOut);
 					inputs.Add(new Coin(inputProof.Input, txOut));
+					coinAndTxOutResponses.Add(coin, getTxOutResponse);
 				}
 
 				if (!allInputsConfirmed)
@@ -300,6 +306,12 @@ public class ChaumianCoinJoinController : ControllerBase
 				{
 					round.RemoveAlicesBy(aliceToRemove);
 				}
+
+				foreach (var coin in alice.Inputs)
+				{
+					CoinVerifier?.AddCoin(new uint256((ulong)round.RoundId), coin, coinAndTxOutResponses[coin]);
+				}
+
 				round.AddAlice(alice);
 
 				// All checks are good. Sign.
@@ -812,5 +824,6 @@ public class ChaumianCoinJoinController : ControllerBase
 	/// </summary>
 	private ContentResult Gone(string content) => new() { StatusCode = (int)HttpStatusCode.Gone, ContentType = "application/json; charset=utf-8", Content = $"\"{content}\"" };
 }
+
 #pragma warning restore CS8619 // Nullability of reference types in value doesn't match target type.
 #pragma warning restore CS8625 // Cannot convert null literal to non-nullable reference type.
