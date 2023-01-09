@@ -1,4 +1,5 @@
 using NBitcoin;
+using Nito.AsyncEx;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
@@ -39,6 +40,7 @@ public class Whitelist
 
 	private string WhitelistFilePath { get; }
 	private WabiSabiConfig WabiSabiConfig { get; }
+	private AsyncLock FileLock { get; } = new();
 
 	public int CountInnocents()
 	{
@@ -144,7 +146,7 @@ public class Whitelist
 		}
 	}
 
-	public void WriteToFileIfChanged(bool forceWrite = false)
+	public async Task WriteToFileIfChangedAsync(bool forceWrite = false)
 	{
 		if (ChangeId == LastSavedChangeId && !forceWrite)
 		{
@@ -154,7 +156,10 @@ public class Whitelist
 		if (!string.IsNullOrEmpty(WhitelistFilePath))
 		{
 			var toFile = GetInnocents().Select(innocent => innocent.ToString());
-			File.WriteAllLines(WhitelistFilePath, toFile);
+			using (await FileLock.LockAsync())
+			{
+				await File.WriteAllLinesAsync(WhitelistFilePath, toFile).ConfigureAwait(false);
+			}
 		}
 	}
 }

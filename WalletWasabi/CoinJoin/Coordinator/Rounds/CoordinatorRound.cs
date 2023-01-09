@@ -649,7 +649,7 @@ public class CoordinatorRound
 		{
 			using CancellationTokenSource cancellationTokenSource = new(TimeSpan.FromSeconds(30));
 
-			await foreach (var info in CoinVerifier.VerifyCoinsAsync(cancellationTokenSource.Token, new uint256((ulong)RoundId)))
+			await foreach (var info in CoinVerifier.GetCoinVerifyInfosAsync(cancellationTokenSource.Token, new uint256((ulong)RoundId)))
 			{
 				if (info.ShouldBan)
 				{

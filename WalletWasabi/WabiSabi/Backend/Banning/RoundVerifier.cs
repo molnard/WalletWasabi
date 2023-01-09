@@ -48,9 +48,10 @@ public class RoundVerifier
 		CoinResults.TryAdd(coin, new TaskCompletionSource<CoinVerifyInfo>());
 	}
 
-	public IEnumerable<Task<CoinVerifyInfo>> CloseAndGetCoinResultsTasks()
+	public IEnumerable<Task<CoinVerifyInfo>> CloseAndGetCoinResultTasks()
 	{
 		IsClosed = true;
+		CoinVerifyItems.Writer.Complete();
 		return CoinResults.Values.Select(x => x.Task);
 	}
 
@@ -68,58 +69,49 @@ public class RoundVerifier
 
 	private async Task VerifyAllAsync(CancellationToken cancel)
 	{
-		do
+		try
 		{
-			using CancellationTokenSource periodicCheck = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-			using CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(periodicCheck.Token, cancel);
+			do
+			{
+				var itemsAvailable = await CoinVerifyItems.Reader.WaitToReadAsync(cancel).ConfigureAwait(false);
 
-			try
-			{
-				await CoinVerifyItems.Reader.WaitToReadAsync(linked.Token).ConfigureAwait(false);
-			}
-			catch (OperationCanceledException)
-			{
-				if (!periodicCheck.IsCancellationRequested)
+				if (itemsAvailable)
 				{
-					// The whole operation was cancelled.
-					throw;
+					await foreach (var coinVerifyItem in CoinVerifyItems.Reader.ReadAllAsync(cancel))
+					{
+						var taskCompletionSourceToSet = CoinResults[coinVerifyItem.Coin];
+						var _ = async () =>
+						{
+							try
+							{
+								var coinVerifyInfo = await VerifyCoinAsync(coinVerifyItem).ConfigureAwait(false);
+								taskCompletionSourceToSet.SetResult(coinVerifyInfo);
+							}
+							catch (Exception ex)
+							{
+								// This cannot throw otherwise unobserved.
+								taskCompletionSourceToSet.TrySetException(new CoinVerifyItemException(coinVerifyItem.Coin, ex));
+							}
+						};
+					}
+				}
+
+				if (IsClosed)
+				{
+					// We are out of items and no more expected.
+					break;
 				}
 			}
-
-			await foreach (var coinVerifyItem in CoinVerifyItems.Reader.ReadAllAsync(cancel))
-			{
-				var taskCompletionSourceToSet = CoinResults[coinVerifyItem.Coin];
-				var _ = async () =>
-				{
-					try
-					{
-						var coinVerifyInfo = await VerifyCoinAsync(coinVerifyItem).ConfigureAwait(false);
-						if (!coinVerifyInfo.ShouldBan)
-						{
-							Whitelist.Add(coinVerifyItem.Coin.Outpoint);
-						}
-
-						taskCompletionSourceToSet.SetResult(coinVerifyInfo);
-					}
-					catch (OperationCanceledException)
-					{
-						taskCompletionSourceToSet.TrySetCanceled();
-					}
-					catch (Exception ex)
-					{
-						// This cannot throw otherwise unobserved.
-						taskCompletionSourceToSet.TrySetException(ex);
-					}
-				};
-			}
-
-			if (IsClosed)
-			{
-				// We are out of items and no more expected.
-				break;
-			}
+			while (!cancel.IsCancellationRequested);
 		}
-		while (!cancel.IsCancellationRequested);
+		catch (OperationCanceledException)
+		{
+			// Cancel is OK.
+		}
+		catch (Exception ex)
+		{
+			Logger.LogError(ex);
+		}
 	}
 
 	private async Task<CoinVerifyInfo> VerifyCoinAsync(CoinVerifyItem coinVerifyItem)

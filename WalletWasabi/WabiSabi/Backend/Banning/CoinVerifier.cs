@@ -1,5 +1,6 @@
 using NBitcoin;
 using NBitcoin.RPC;
+using NBitcoin.Secp256k1;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
@@ -41,33 +42,50 @@ public class CoinVerifier
 
 	private Dictionary<uint256, RoundVerifier> RoundVerifiers { get; } = new();
 
-	public async IAsyncEnumerable<CoinVerifyInfo> VerifyCoinsAsync([EnumeratorCancellation] CancellationToken cancellationToken, uint256 roundId)
+	public async IAsyncEnumerable<CoinVerifyInfo> GetCoinVerifyInfosAsync([EnumeratorCancellation] CancellationToken cancellationToken, uint256 roundId)
 	{
 		var before = DateTimeOffset.UtcNow;
 
-		var roundVerifier = RoundVerifiers[roundId];
-
-		var tasks = roundVerifier.CloseAndGetCoinResultsTasks();
-
-		do
+		try
 		{
-			// TODO handle timeout!!
-			var completedTask = await Task.WhenAny(tasks).WaitAsync(cancellationToken).ConfigureAwait(false);
-			var coinVerifyInfo = await completedTask.WaitAsync(cancellationToken).ConfigureAwait(false);
+			var roundVerifier = RoundVerifiers[roundId];
+			var coinVerifierTasks = roundVerifier.CloseAndGetCoinResultTasks();
 
-			if (!coinVerifyInfo.ShouldBan)
+			do
 			{
-				Whitelist.Add(coinVerifyInfo.Coin.Outpoint);
+				var completedTask = await Task.WhenAny(coinVerifierTasks).WaitAsync(cancellationToken).ConfigureAwait(false);
+				CoinVerifyInfo? result;
+
+				try
+				{
+					result = await completedTask.WaitAsync(cancellationToken).ConfigureAwait(false);
+
+					if (!result.ShouldBan)
+					{
+						Whitelist.Add(result.Coin.Outpoint);
+					}
+				}
+				catch (CoinVerifyItemException ex)
+				{
+					result = new CoinVerifyInfo(false, true, ex.Coin);
+				}
+				catch (Exception ex)
+				{
+					// This should never happen.
+					Logger.LogError(ex);
+					continue;
+				}
+
+				yield return result;
 			}
-
-			yield return coinVerifyInfo;
+			while (!cancellationToken.IsCancellationRequested);
 		}
-		while (!cancellationToken.IsCancellationRequested);
-
-		Whitelist.WriteToFileIfChanged();
-
-		var duration = DateTimeOffset.UtcNow - before;
-		RequestTimeStatista.Instance.Add("verifier-period", duration);
+		finally
+		{
+			Whitelist.WriteToFileIfChangedAsync();
+			var duration = DateTimeOffset.UtcNow - before;
+			RequestTimeStatista.Instance.Add("verifier-period", duration);
+		}
 	}
 
 	public void AddCoin(uint256 roundId, Coin coin, GetTxOutResponse txOutResponse, bool? oneHopCoin = null)
@@ -115,7 +133,7 @@ public class CoinVerifier
 					break;
 
 				default:
-					_ = roundVerifier.CloseAndGetCoinResultsTasks();
+					_ = roundVerifier.CloseAndGetCoinResultTasks();
 					break;
 			}
 		}

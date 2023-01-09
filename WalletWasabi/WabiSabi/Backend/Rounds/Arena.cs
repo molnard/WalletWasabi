@@ -123,35 +123,44 @@ public partial class Arena : PeriodicRunner
 
 				if (round is not BlameRound && CoinVerifier is not null)
 				{
+					var aliceDictionary = round.Alices.ToDictionary(a => a.Coin, a => a);
+					int banCounter = 0;
+					int removeCounter = 0;
+					List<Alice> alicesNotVerified = new(round.Alices);
 					try
 					{
-						var aliceDictionary = round.Alices.ToDictionary(a => a.Coin, a => a);
-						int banCounter = 0;
-
 						using CancellationTokenSource cancellationTokenSource = new(TimeSpan.FromSeconds(30));
 						using CancellationTokenSource linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationTokenSource.Token, cancel);
 
-						await foreach (var coinVerifyInfo in CoinVerifier.VerifyCoinsAsync(linkedCts.Token, round.Id).ConfigureAwait(false))
+						await foreach (var coinVerifyInfo in CoinVerifier.GetCoinVerifyInfosAsync(linkedCts.Token, round.Id).ConfigureAwait(false))
 						{
-							Alice aliceToPunish = aliceDictionary[coinVerifyInfo.Coin];
+							Alice alice = aliceDictionary[coinVerifyInfo.Coin];
 							if (coinVerifyInfo.ShouldBan)
 							{
 								banCounter++;
-
-								Prison.Ban(aliceToPunish, round.Id, isLongBan: true);
-								round.Alices.Remove(aliceToPunish);
+								Prison.Ban(alice, round.Id, isLongBan: true);
+								round.Alices.Remove(alice);
 							}
 							else if (coinVerifyInfo.ShouldRemove)
 							{
-								round.Alices.Remove(aliceToPunish);
+								removeCounter++;
+								round.Alices.Remove(alice);
 							}
 						}
-						Logger.LogInfo($"{banCounter} utxos were banned from round {round.Id}.");
 					}
 					catch (Exception exc)
 					{
 						Logger.LogError($"{nameof(CoinVerifier)} has failed to verify all Alices({round.Alices.Count}).", exc);
 					}
+
+					foreach (var alice in alicesNotVerified)
+					{
+						round.Alices.Remove(alice);
+					}
+
+					var totalVerified = round.Alices.Count - alicesNotVerified.Count;
+
+					Logger.LogInfo($"{nameof(CoinVerifier)} results. Verified alices:{totalVerified}/{round.Alices.Count}. Banned:{banCounter}. Removed by verifier:{removeCounter}. Removed by exception:{alicesNotVerified.Count}.");
 				}
 
 				if (round.InputCount < Config.MinInputCountByRound)
