@@ -59,11 +59,6 @@ public class CoinVerifier
 				try
 				{
 					result = await completedTask.WaitAsync(cancellationToken).ConfigureAwait(false);
-
-					if (!result.ShouldBan)
-					{
-						Whitelist.Add(result.Coin.Outpoint);
-					}
 				}
 				catch (CoinVerifyItemException ex)
 				{
@@ -82,7 +77,7 @@ public class CoinVerifier
 		}
 		finally
 		{
-			Whitelist.WriteToFileIfChangedAsync();
+			await Whitelist.WriteToFileIfChangedAsync().ConfigureAwait(false);
 			var duration = DateTimeOffset.UtcNow - before;
 			RequestTimeStatista.Instance.Add("verifier-period", duration);
 		}

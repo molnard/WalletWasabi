@@ -85,6 +85,13 @@ public class RoundVerifier
 							try
 							{
 								var coinVerifyInfo = await VerifyCoinAsync(coinVerifyItem).ConfigureAwait(false);
+
+								// Handle the results here. Maybe nobody is looking at taskCompletionSourceToSet, because there was a timeout.
+								if (!coinVerifyInfo.ShouldBan)
+								{
+									Whitelist.Add(coinVerifyInfo.Coin.Outpoint);
+								}
+
 								taskCompletionSourceToSet.SetResult(coinVerifyInfo);
 							}
 							catch (Exception ex)
