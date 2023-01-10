@@ -54,8 +54,11 @@ public class RoundVerifier
 
 	public IEnumerable<Task<CoinVerifyInfo>> CloseAndGetCoinResultTasks()
 	{
-		IsClosed = true;
-		CoinVerifyItems.Writer.Complete();
+		if (!IsClosed)
+		{
+			IsClosed = true;
+			CoinVerifyItems.Writer.Complete();
+		}
 		return CoinResults.Values.Select(x => x.Task);
 	}
 

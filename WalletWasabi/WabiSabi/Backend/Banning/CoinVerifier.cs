@@ -98,15 +98,15 @@ public class CoinVerifier
 
 	internal void StepRoundVerifiers(IEnumerable<RoundState> roundStates, CancellationToken cancel)
 	{
-		// Handling new round additions.
+		// Handling new round additions, add RoundVerifier if needed.
 		var newRoundIds = roundStates.Where(rs => !RoundVerifiers.ContainsKey(rs.Id)).Select(rs => rs.Id);
-
 		foreach (var newRoundId in newRoundIds)
 		{
 			var newVerifier = new RoundVerifier(newRoundId, Whitelist, CoinJoinIdStore, CoinVerifierApiClient, WabiSabiConfig, Prison);
 			RoundVerifiers.Add(newRoundId, newVerifier);
 		}
 
+		// Update RoundVerifiers state.
 		foreach (var roundVerifier in RoundVerifiers.Values.ToArray())
 		{
 			if (roundVerifier.IsFinished)
@@ -130,7 +130,10 @@ public class CoinVerifier
 					break;
 
 				default:
-					_ = roundVerifier.CloseAndGetCoinResultTasks();
+					if (!roundVerifier.IsClosed)
+					{
+						_ = roundVerifier.CloseAndGetCoinResultTasks();
+					}
 					break;
 			}
 		}
