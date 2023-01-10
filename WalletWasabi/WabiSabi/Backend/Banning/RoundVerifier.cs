@@ -6,8 +6,10 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
+using WalletWasabi.CoinJoin.Coordinator.Participants;
 using WalletWasabi.Interfaces;
 using WalletWasabi.Logging;
+using WalletWasabi.WabiSabi.Backend.DoSPrevention;
 using WalletWasabi.WabiSabi.Backend.Models;
 using WalletWasabi.WabiSabi.Backend.Rounds;
 using WalletWasabi.WabiSabi.Backend.Rounds.CoinJoinStorage;
@@ -16,13 +18,14 @@ namespace WalletWasabi.WabiSabi.Backend.Banning;
 
 public class RoundVerifier
 {
-	public RoundVerifier(uint256 roundId, Whitelist whitelist, CoinJoinIdStore coinJoinIdStore, CoinVerifierApiClient coinVerifierApiClient, WabiSabiConfig wabiSabiConfig)
+	public RoundVerifier(uint256 roundId, Whitelist whitelist, CoinJoinIdStore coinJoinIdStore, CoinVerifierApiClient coinVerifierApiClient, WabiSabiConfig wabiSabiConfig, Prison prison)
 	{
 		RoundId = roundId;
 		Whitelist = whitelist;
 		CoinJoinIdStore = coinJoinIdStore;
 		CoinVerifierApiClient = coinVerifierApiClient;
 		WabiSabiConfig = wabiSabiConfig;
+		Prison = prison;
 	}
 
 	public bool IsFinished { get; private set; }
@@ -31,6 +34,7 @@ public class RoundVerifier
 	public CoinJoinIdStore CoinJoinIdStore { get; }
 	public CoinVerifierApiClient CoinVerifierApiClient { get; }
 	public WabiSabiConfig WabiSabiConfig { get; }
+	public Prison Prison { get; }
 	public bool IsStarted { get; private set; }
 
 	private Channel<CoinVerifyItem> CoinVerifyItems { get; } = Channel.CreateUnbounded<CoinVerifyItem>();
@@ -84,12 +88,19 @@ public class RoundVerifier
 						{
 							try
 							{
-								var coinVerifyInfo = await VerifyCoinAsync(coinVerifyItem).ConfigureAwait(false);
+								// We will wait 2 minutes for the result, no matter if the outside observer is waiting for the result or not.
+								// Next time the coin wants to register the information will be available.
+								using CancellationTokenSource cts = new(TimeSpan.FromMinutes(2));
+								var coinVerifyInfo = await VerifyCoinAsync(coinVerifyItem, cts.Token).ConfigureAwait(false);
 
 								// Handle the results here. Maybe nobody is looking at taskCompletionSourceToSet, because there was a timeout.
 								if (!coinVerifyInfo.ShouldBan)
 								{
 									Whitelist.Add(coinVerifyInfo.Coin.Outpoint);
+								}
+								else
+								{
+									Prison.Ban(coinVerifyInfo.Coin.Outpoint, RoundId, isLongBan: true);
 								}
 
 								taskCompletionSourceToSet.SetResult(coinVerifyInfo);
@@ -108,8 +119,10 @@ public class RoundVerifier
 					// We are out of items and no more expected.
 					break;
 				}
+
+				cancel.ThrowIfCancellationRequested();
 			}
-			while (!cancel.IsCancellationRequested);
+			while (true);
 		}
 		catch (OperationCanceledException)
 		{
@@ -121,9 +134,8 @@ public class RoundVerifier
 		}
 	}
 
-	private async Task<CoinVerifyInfo> VerifyCoinAsync(CoinVerifyItem coinVerifyItem)
+	private async Task<CoinVerifyInfo> VerifyCoinAsync(CoinVerifyItem coinVerifyItem, CancellationToken cancellationToken)
 	{
-		using CancellationTokenSource cts = new(TimeSpan.FromMinutes(2));
 		var coin = coinVerifyItem.Coin;
 
 		// Check if coin is one hop.
@@ -153,7 +165,7 @@ public class RoundVerifier
 			return new CoinVerifyInfo(ShouldBan: false, ShouldRemove: true, coin);
 		}
 
-		var apiResponse = await CoinVerifierApiClient.SendRequestAsync(coin.ScriptPubKey, cts.Token).ConfigureAwait(false);
+		var apiResponse = await CoinVerifierApiClient.SendRequestAsync(coin.ScriptPubKey, cancellationToken).ConfigureAwait(false);
 		bool shouldBanUtxo = CheckForFlags(apiResponse);
 
 		return new CoinVerifyInfo(ShouldBan: shouldBanUtxo, ShouldRemove: shouldBanUtxo, coin);

@@ -18,6 +18,7 @@ using WalletWasabi.Services;
 using WalletWasabi.WabiSabi;
 using WalletWasabi.WabiSabi.Backend;
 using WalletWasabi.WabiSabi.Backend.Banning;
+using WalletWasabi.WabiSabi.Backend.DoSPrevention;
 using WalletWasabi.WabiSabi.Backend.Rounds.CoinJoinStorage;
 using WalletWasabi.WabiSabi.Backend.Statistics;
 
@@ -88,8 +89,8 @@ public class Global : IDisposable
 		await P2pNode.ConnectAsync(cancel).ConfigureAwait(false);
 
 		HostedServices.Register<MempoolMirror>(() => new MempoolMirror(TimeSpan.FromSeconds(21), RpcClient, P2pNode), "Full Node Mempool Mirror");
-
-		var blockNotifier = HostedServices.Get<BlockNotifier>();
+		HostedServices.Register<Warden>(() => new Warden(CoordinatorParameters.UtxoWardenPeriod, CoordinatorParameters.PrisonFilePath, CoordinatorParameters.RuntimeCoordinatorConfig), "Warden");
+		var warden = HostedServices.Get<Warden>();
 
 		bool coinVerifierEnabled = CoordinatorParameters.RuntimeCoordinatorConfig.IsCoinVerifierEnabled || roundConfig.IsCoinVerifierEnabledForWW1;
 		CoinVerifier? coinVerifier = null;
@@ -115,7 +116,7 @@ public class Global : IDisposable
 
 				var coinVerifierApiClient = new CoinVerifierApiClient(wabiSabiConfig.CoinVerifierApiAuthToken, RpcClient.Network, HttpClient);
 				var whitelist = await Whitelist.CreateAndLoadFromFileAsync(CoordinatorParameters.WhitelistFilePath, wabiSabiConfig, cancel).ConfigureAwait(false);
-				coinVerifier = new(CoinJoinIdStore, coinVerifierApiClient, whitelist, wabiSabiConfig);
+				coinVerifier = new(CoinJoinIdStore, coinVerifierApiClient, whitelist, wabiSabiConfig, warden.Prison);
 				CoinVerifier = coinVerifier;
 				Logger.LogInfo("CoinVerifier created successfully.");
 			}
@@ -125,6 +126,7 @@ public class Global : IDisposable
 			}
 		}
 
+		var blockNotifier = HostedServices.Get<BlockNotifier>();
 		Coordinator = new(RpcClient.Network, blockNotifier, Path.Combine(DataDir, "CcjCoordinator"), RpcClient, roundConfig, roundConfig.IsCoinVerifierEnabledForWW1 ? coinVerifier : null);
 		Coordinator.CoinJoinBroadcasted += Coordinator_CoinJoinBroadcasted;
 
