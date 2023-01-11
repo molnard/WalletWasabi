@@ -52,11 +52,13 @@ public class CoinVerifier
 		try
 		{
 			var roundVerifier = RoundVerifiers[roundId];
-			var coinVerifierTasks = roundVerifier.CloseAndGetCoinResultTasks();
+			var coinVerifierTasks = roundVerifier.CloseAndGetCoinResultTasks().ToList();
 
 			do
 			{
 				var completedTask = await Task.WhenAny(coinVerifierTasks).WaitAsync(cancellationToken).ConfigureAwait(false);
+				coinVerifierTasks.Remove(completedTask);
+
 				CoinVerifyInfo? result;
 
 				try
@@ -78,7 +80,7 @@ public class CoinVerifier
 
 				cancellationToken.ThrowIfCancellationRequested();
 			}
-			while (coinVerifierTasks.Any(t => !t.IsCompleted));
+			while (coinVerifierTasks.Any());
 		}
 		finally
 		{

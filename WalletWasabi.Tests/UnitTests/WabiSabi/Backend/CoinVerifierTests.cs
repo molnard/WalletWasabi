@@ -76,16 +76,10 @@ public class CoinVerifierTests
 	public async Task CanFilterNaughtyUtxoTestAsync()
 	{
 		Mock<HttpClient> mockHttpClient = new();
-		mockHttpClient.SetupSequence(client => client.SendAsync(It.IsAny<HttpRequestMessage>(), It.IsAny<CancellationToken>()))
+		mockHttpClient.Setup(client => client.SendAsync(It.IsAny<HttpRequestMessage>(), It.IsAny<CancellationToken>()))
 			.ReturnsAsync(() =>
 			{
 				string content = GenerateDirtyJsonReport();
-				HttpResponseMessage response = new(System.Net.HttpStatusCode.OK);
-				response.Content = new StringContent(content);
-				return response;
-			}).ReturnsAsync(() =>
-			{
-				string content = GenerateCleanJsonReport();
 				HttpResponseMessage response = new(System.Net.HttpStatusCode.OK);
 				response.Content = new StringContent(content);
 				return response;
