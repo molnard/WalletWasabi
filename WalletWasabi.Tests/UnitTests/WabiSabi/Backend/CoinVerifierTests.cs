@@ -7,7 +7,9 @@ using System.Threading.Tasks;
 using WalletWasabi.Tests.Helpers;
 using WalletWasabi.WabiSabi.Backend;
 using WalletWasabi.WabiSabi.Backend.Banning;
+using WalletWasabi.WabiSabi.Backend.Rounds;
 using WalletWasabi.WabiSabi.Backend.Rounds.CoinJoinStorage;
+using WalletWasabi.WabiSabi.Models;
 using Xunit;
 
 namespace WalletWasabi.Tests.UnitTests.WabiSabi.Backend;
@@ -40,8 +42,26 @@ public class CoinVerifierTests
 
 		List<Coin> generatedCoins = GenerateCoins(98);
 		List<Coin> naughtyCoins = new();
+		uint256 roundId = uint256.One;
+		coinVerifier.StepRoundVerifiers(new[] {
+			new RoundState(
+				roundId,
+				0,
+				null!,
+				null!,
+				Phase.InputRegistration,
+				EndRoundState.None,
+				DateTimeOffset.UtcNow,
+				TimeSpan.FromSeconds(90),
+				null!)
+			}, CancellationToken.None);
 
-		await foreach (var item in coinVerifier.VerifyCoinsAsync(generatedCoins, CancellationToken.None).ConfigureAwait(false))
+		foreach (var coin in generatedCoins)
+		{
+			coinVerifier.AddCoin(roundId, coin, new NBitcoin.RPC.GetTxOutResponse());
+		}
+
+		await foreach (var item in coinVerifier.GetCoinVerifyInfosAsync(CancellationToken.None, roundId).ConfigureAwait(false))
 		{
 			if (item.ShouldBan)
 			{
@@ -80,7 +100,26 @@ public class CoinVerifierTests
 
 		List<Coin> generatedCoins = GenerateCoins(10);
 
-		await foreach (var item in coinVerifier.VerifyCoinsAsync(generatedCoins, CancellationToken.None).ConfigureAwait(false))
+		uint256 roundId = uint256.One;
+		coinVerifier.StepRoundVerifiers(new[] {
+			new RoundState(
+				roundId,
+				0,
+				null!,
+				null!,
+				Phase.InputRegistration,
+				EndRoundState.None,
+				DateTimeOffset.UtcNow,
+				TimeSpan.FromSeconds(90),
+				null!)
+			}, CancellationToken.None);
+
+		foreach (var coin in generatedCoins)
+		{
+			coinVerifier.AddCoin(roundId, coin, new NBitcoin.RPC.GetTxOutResponse());
+		}
+
+		await foreach (var item in coinVerifier.GetCoinVerifyInfosAsync(CancellationToken.None, roundId).ConfigureAwait(false))
 		{
 			if (item.ShouldBan)
 			{
@@ -112,7 +151,26 @@ public class CoinVerifierTests
 
 		List<Coin> generatedCoins = GenerateCoins(5);
 
-		await foreach (var item in coinVerifier.VerifyCoinsAsync(generatedCoins, CancellationToken.None).ConfigureAwait(false))
+		uint256 roundId = uint256.One;
+		coinVerifier.StepRoundVerifiers(new[] {
+			new RoundState(
+				roundId,
+				0,
+				null!,
+				null!,
+				Phase.InputRegistration,
+				EndRoundState.None,
+				DateTimeOffset.UtcNow,
+				TimeSpan.FromSeconds(90),
+				null!)
+			}, CancellationToken.None);
+
+		foreach (var coin in generatedCoins)
+		{
+			coinVerifier.AddCoin(roundId, coin, new NBitcoin.RPC.GetTxOutResponse());
+		}
+
+		await foreach (var item in coinVerifier.GetCoinVerifyInfosAsync(CancellationToken.None, roundId).ConfigureAwait(false))
 		{
 			if (item.ShouldBan)
 			{
@@ -147,7 +205,26 @@ public class CoinVerifierTests
 		CoinVerifierApiClient apiClient = new("token", Network.Main, mockHttpClient.Object);
 		CoinVerifier coinVerifier = new(coinJoinIdStore, apiClient, _wabisabiTestConfig);
 
-		await foreach (var item in coinVerifier.VerifyCoinsAsync(generatedCoins, CancellationToken.None).ConfigureAwait(false))
+		uint256 roundId = uint256.One;
+		coinVerifier.StepRoundVerifiers(new[] {
+			new RoundState(
+				roundId,
+				0,
+				null!,
+				null!,
+				Phase.InputRegistration,
+				EndRoundState.None,
+				DateTimeOffset.UtcNow,
+				TimeSpan.FromSeconds(90),
+				null!)
+			}, CancellationToken.None);
+
+		foreach (var coin in generatedCoins)
+		{
+			coinVerifier.AddCoin(roundId, coin, new NBitcoin.RPC.GetTxOutResponse());
+		}
+
+		await foreach (var item in coinVerifier.GetCoinVerifyInfosAsync(CancellationToken.None, roundId).ConfigureAwait(false))
 		{
 			Assert.False(item.ShouldBan);
 		}
@@ -175,7 +252,26 @@ public class CoinVerifierTests
 
 		List<Coin> generatedCoins = GenerateCoins(10);
 
-		await foreach (var item in coinVerifier.VerifyCoinsAsync(generatedCoins, CancellationToken.None).ConfigureAwait(false))
+		uint256 roundId = uint256.One;
+		coinVerifier.StepRoundVerifiers(new[] {
+			new RoundState(
+				roundId,
+				0,
+				null!,
+				null!,
+				Phase.InputRegistration,
+				EndRoundState.None,
+				DateTimeOffset.UtcNow,
+				TimeSpan.FromSeconds(90),
+				null!)
+			}, CancellationToken.None);
+
+		foreach (var coin in generatedCoins)
+		{
+			coinVerifier.AddCoin(roundId, coin, new NBitcoin.RPC.GetTxOutResponse());
+		}
+
+		await foreach (var item in coinVerifier.GetCoinVerifyInfosAsync(CancellationToken.None, roundId).ConfigureAwait(false))
 		{
 			if (item.ShouldBan)
 			{
@@ -203,7 +299,7 @@ public class CoinVerifierTests
 		for (int i = 0; i < numToGen; i++)
 		{
 			using Key key = new();
-			coins.Add(WabiSabiFactory.CreateCoin(key));
+			coins.Add(WabiSabiFactory.CreateCoin(key, Money.Coins(0.6m)));
 		}
 
 		return coins;

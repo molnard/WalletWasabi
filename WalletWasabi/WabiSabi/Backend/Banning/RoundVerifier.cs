@@ -59,6 +59,12 @@ public class RoundVerifier
 			IsClosed = true;
 			CoinVerifyItems.Writer.Complete();
 		}
+
+		if (!IsStarted)
+		{
+			Start(CancellationToken.None);
+		}
+
 		return CoinResults.Values.Select(x => x.Task);
 	}
 
@@ -87,7 +93,7 @@ public class RoundVerifier
 					await foreach (var coinVerifyItem in CoinVerifyItems.Reader.ReadAllAsync(cancel))
 					{
 						var taskCompletionSourceToSet = CoinResults[coinVerifyItem.Coin];
-						var _ = async () =>
+						var _ = Task.Run(async () =>
 						{
 							try
 							{
@@ -113,7 +119,7 @@ public class RoundVerifier
 								// This cannot throw otherwise unobserved.
 								taskCompletionSourceToSet.TrySetException(new CoinVerifyItemException(coinVerifyItem.Coin, ex));
 							}
-						};
+						}, cancel);
 					}
 				}
 
@@ -134,6 +140,10 @@ public class RoundVerifier
 		catch (Exception ex)
 		{
 			Logger.LogError(ex);
+		}
+		finally
+		{
+			IsFinished = true;
 		}
 	}
 

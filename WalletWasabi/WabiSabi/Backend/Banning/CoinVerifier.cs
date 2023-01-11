@@ -75,8 +75,10 @@ public class CoinVerifier
 				}
 
 				yield return result;
+
+				cancellationToken.ThrowIfCancellationRequested();
 			}
-			while (!cancellationToken.IsCancellationRequested);
+			while (coinVerifierTasks.Any(t => !t.IsCompleted));
 		}
 		finally
 		{
@@ -97,7 +99,7 @@ public class CoinVerifier
 		throw new InvalidOperationException($"Could not find {nameof(RoundVerifier)} for round:'{roundId}'.");
 	}
 
-	internal void StepRoundVerifiers(IEnumerable<RoundState> roundStates, CancellationToken cancel)
+	public void StepRoundVerifiers(IEnumerable<RoundState> roundStates, CancellationToken cancel)
 	{
 		// Handling new round additions, add RoundVerifier if needed.
 		var newRoundIds = roundStates.Where(rs => !RoundVerifiers.ContainsKey(rs.Id)).Select(rs => rs.Id);
