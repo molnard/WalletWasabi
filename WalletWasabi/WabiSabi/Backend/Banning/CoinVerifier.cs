@@ -34,6 +34,7 @@ public class CoinVerifier
 		CoinVerifierApiClient = apiClient;
 		Whitelist = new();
 		WabiSabiConfig = wabiSabiConfig;
+		Prison = new Prison();
 	}
 
 	public Whitelist Whitelist { get; }

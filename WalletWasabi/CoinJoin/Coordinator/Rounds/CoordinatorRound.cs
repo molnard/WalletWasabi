@@ -18,6 +18,7 @@ using WalletWasabi.Extensions;
 using WalletWasabi.Helpers;
 using WalletWasabi.Logging;
 using WalletWasabi.WabiSabi.Backend.Banning;
+using WalletWasabi.WabiSabi.Backend.Rounds;
 using static WalletWasabi.Crypto.SchnorrBlinding;
 
 namespace WalletWasabi.CoinJoin.Coordinator.Rounds;
@@ -644,16 +645,28 @@ public class CoordinatorRound
 		{
 			return;
 		}
-		List<OutPoint> inputsToBan = new();
+
+		List<Coin> coinsToBan = new();
+		List<Coin> coinsNotVerified = new(Alices.SelectMany(a => a.Inputs));
+		List<Coin> coinsShouldRemove = new();
+
 		try
 		{
 			using CancellationTokenSource cancellationTokenSource = new(TimeSpan.FromSeconds(30));
 
 			await foreach (var info in CoinVerifier.GetCoinVerifyInfosAsync(cancellationTokenSource.Token, new uint256((ulong)RoundId)))
 			{
+				var coin = info.Coin;
+				coinsNotVerified.Remove(coin);
+
 				if (info.ShouldBan)
 				{
-					inputsToBan.Add(info.Coin.Outpoint);
+					coinsToBan.Add(coin);
+				}
+
+				if (info.ShouldRemove)
+				{
+					coinsShouldRemove.Add(coin);
 				}
 			}
 		}
@@ -662,13 +675,20 @@ public class CoordinatorRound
 			Logger.LogError($"{nameof(CoinVerifier)} has failed to verify all Alices({Alices.Count}).", exc);
 		}
 
-		var alicesToRemove = Alices.Where(alice => inputsToBan.Any(outpoint => alice.Inputs.Select(input => input.Outpoint).Contains(outpoint))).ToArray();
-		Logger.LogInfo($"Alices({alicesToRemove.Length}) was force banned in round '{RoundId}'.");
+		var coinsToRemove = coinsToBan.Concat(coinsNotVerified).Concat(coinsShouldRemove).Distinct().ToHashSet();
+
+		// Alice will be remove if any of it's coins are removed.
+		var alicesToRemove = Alices.Where(alice => alice.Inputs.Any(coin => coinsToRemove.Contains(coin))).ToArray();
+
 		foreach (var alice in alicesToRemove)
 		{
 			Alices.Remove(alice);
 		}
-		await UtxoReferee.BanUtxosAsync(1, DateTimeOffset.UtcNow, forceNoted: false, RoundId, forceBan: true, inputsToBan.ToArray()).ConfigureAwait(false);
+
+		var totalVerified = Alices.Count - coinsNotVerified.Count;
+		Logger.LogInfo($"{nameof(CoinVerifier)} results WW1. Verified alices:{totalVerified}/{Alices.Count}. Banned:{coinsToBan.Count}. Removed by verifier:{coinsShouldRemove.Count}. Removed by exception:{coinsNotVerified.Count}.");
+
+		await UtxoReferee.BanUtxosAsync(1, DateTimeOffset.UtcNow, forceNoted: false, RoundId, forceBan: true, coinsToBan.Select(c => c.Outpoint).ToArray()).ConfigureAwait(false);
 	}
 
 	private async Task MoveToInputRegistrationAsync()
