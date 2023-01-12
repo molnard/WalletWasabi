@@ -73,21 +73,31 @@ public class CoinVerifierTests
 	}
 
 	[Fact]
-	public async Task CanFilterNaughtyUtxoTestAsync()
+	public async Task CanFilterNaughtyOrFailedUtxoTestAsync()
 	{
 		Mock<HttpClient> mockHttpClient = new();
-		mockHttpClient.Setup(client => client.SendAsync(It.IsAny<HttpRequestMessage>(), It.IsAny<CancellationToken>()))
-			.ReturnsAsync(() =>
-			{
-				string content = GenerateDirtyJsonReport();
-				HttpResponseMessage response = new(System.Net.HttpStatusCode.OK);
-				response.Content = new StringContent(content);
-				return response;
-			});
+
+		using HttpResponseMessage dirtyResponse = new(System.Net.HttpStatusCode.OK) { Content = new StringContent(GenerateDirtyJsonReport()) };
+		using HttpResponseMessage cleanResponse = new(System.Net.HttpStatusCode.OK) { Content = new StringContent(GenerateCleanJsonReport()) };
+
+		mockHttpClient.SetupSequence(client => client.SendAsync(It.IsAny<HttpRequestMessage>(), It.IsAny<CancellationToken>()))
+			.ReturnsAsync(dirtyResponse)
+			.ReturnsAsync(cleanResponse)
+			.ReturnsAsync(cleanResponse)
+			.ThrowsAsync(new InvalidOperationException())
+			.ReturnsAsync(cleanResponse)
+			.ReturnsAsync(cleanResponse)
+			.ReturnsAsync(cleanResponse)
+			.ReturnsAsync(cleanResponse)
+			.ReturnsAsync(cleanResponse)
+			.ReturnsAsync(cleanResponse);
 
 		mockHttpClient.Object.BaseAddress = new Uri(TestURL);
 
 		List<Coin> naughtyCoins = new();
+		List<Coin> removedCoins = new();
+		List<Coin> checkedCoins = new();
+
 		CoinJoinIdStore coinJoinIdStore = new();
 		CoinVerifierApiClient apiClient = new("token", Network.Main, mockHttpClient.Object);
 		CoinVerifier coinVerifier = new(coinJoinIdStore, apiClient, _wabisabiTestConfig);
@@ -115,12 +125,20 @@ public class CoinVerifierTests
 
 		await foreach (var item in coinVerifier.GetCoinVerifyInfosAsync(CancellationToken.None, roundId).ConfigureAwait(false))
 		{
+			checkedCoins.Add(item.Coin);
+
 			if (item.ShouldBan)
 			{
 				naughtyCoins.Add(item.Coin);
 			}
+			else if (item.ShouldRemove)
+			{
+				removedCoins.Add(item.Coin);
+			}
 		}
 
+		Assert.Equal(10, checkedCoins.Count);
+		Assert.Single(removedCoins);
 		Assert.Single(naughtyCoins);
 	}
 
