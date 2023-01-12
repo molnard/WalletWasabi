@@ -45,7 +45,7 @@ public class CoinVerifier
 
 	private Dictionary<uint256, RoundVerifier> RoundVerifiers { get; } = new();
 
-	public async IAsyncEnumerable<CoinVerifyInfo> GetCoinVerifyInfosAsync([EnumeratorCancellation] CancellationToken cancellationToken, uint256 roundId)
+	public async IAsyncEnumerable<CoinVerifyInfo> GetCoinVerifyInfosAsync(uint256 roundId, [EnumeratorCancellation] CancellationToken cancellationToken)
 	{
 		var before = DateTimeOffset.UtcNow;
 

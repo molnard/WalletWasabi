@@ -51,7 +51,7 @@ public class CoinVerifierTests
 			coinVerifier.AddCoin(roundId, coin, new NBitcoin.RPC.GetTxOutResponse());
 		}
 
-		await foreach (var item in coinVerifier.GetCoinVerifyInfosAsync(CancellationToken.None, roundId).ConfigureAwait(false))
+		await foreach (var item in coinVerifier.GetCoinVerifyInfosAsync(roundId, CancellationToken.None).ConfigureAwait(false))
 		{
 			if (item.ShouldBan)
 			{
@@ -102,7 +102,7 @@ public class CoinVerifierTests
 			coinVerifier.AddCoin(roundId, coin, new NBitcoin.RPC.GetTxOutResponse());
 		}
 
-		await foreach (var item in coinVerifier.GetCoinVerifyInfosAsync(CancellationToken.None, roundId).ConfigureAwait(false))
+		await foreach (var item in coinVerifier.GetCoinVerifyInfosAsync(roundId, CancellationToken.None).ConfigureAwait(false))
 		{
 			checkedCoins.Add(item.Coin);
 
@@ -150,7 +150,7 @@ public class CoinVerifierTests
 			coinVerifier.AddCoin(roundId, coin, new NBitcoin.RPC.GetTxOutResponse());
 		}
 
-		await foreach (var item in coinVerifier.GetCoinVerifyInfosAsync(CancellationToken.None, roundId).ConfigureAwait(false))
+		await foreach (var item in coinVerifier.GetCoinVerifyInfosAsync(roundId, CancellationToken.None).ConfigureAwait(false))
 		{
 			if (item.ShouldBan)
 			{
@@ -193,7 +193,7 @@ public class CoinVerifierTests
 			coinVerifier.AddCoin(roundId, coin, new NBitcoin.RPC.GetTxOutResponse());
 		}
 
-		await foreach (var item in coinVerifier.GetCoinVerifyInfosAsync(CancellationToken.None, roundId).ConfigureAwait(false))
+		await foreach (var item in coinVerifier.GetCoinVerifyInfosAsync(roundId, CancellationToken.None).ConfigureAwait(false))
 		{
 			Assert.False(item.ShouldBan);
 		}
@@ -229,7 +229,7 @@ public class CoinVerifierTests
 			coinVerifier.AddCoin(roundId, coin, new NBitcoin.RPC.GetTxOutResponse());
 		}
 
-		await foreach (var item in coinVerifier.GetCoinVerifyInfosAsync(CancellationToken.None, roundId).ConfigureAwait(false))
+		await foreach (var item in coinVerifier.GetCoinVerifyInfosAsync(roundId, CancellationToken.None).ConfigureAwait(false))
 		{
 			if (item.ShouldBan)
 			{

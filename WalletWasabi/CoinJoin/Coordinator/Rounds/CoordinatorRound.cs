@@ -654,7 +654,7 @@ public class CoordinatorRound
 		{
 			using CancellationTokenSource cancellationTokenSource = new(TimeSpan.FromSeconds(30));
 
-			await foreach (var info in CoinVerifier.GetCoinVerifyInfosAsync(cancellationTokenSource.Token, new uint256((ulong)RoundId)))
+			await foreach (var info in CoinVerifier.GetCoinVerifyInfosAsync(new uint256((ulong)RoundId), cancellationTokenSource.Token))
 			{
 				var coin = info.Coin;
 				coinsNotVerified.Remove(coin);
