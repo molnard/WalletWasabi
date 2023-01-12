@@ -13,6 +13,7 @@ using WalletWasabi.WabiSabi.Backend.DoSPrevention;
 using WalletWasabi.WabiSabi.Backend.Models;
 using WalletWasabi.WabiSabi.Backend.Rounds;
 using WalletWasabi.WabiSabi.Backend.Rounds.CoinJoinStorage;
+using WalletWasabi.WabiSabi.Backend.Statistics;
 
 namespace WalletWasabi.WabiSabi.Backend.Banning;
 
@@ -82,6 +83,8 @@ public class RoundVerifier
 
 	private async Task VerifyAllAsync(CancellationToken cancel)
 	{
+		var before = DateTimeOffset.UtcNow;
+
 		try
 		{
 			do
@@ -144,6 +147,8 @@ public class RoundVerifier
 		finally
 		{
 			IsFinished = true;
+			var duration = DateTimeOffset.UtcNow - before;
+			RequestTimeStatista.Instance.Add("roundverifier-period", duration);
 		}
 	}
 

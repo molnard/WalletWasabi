@@ -47,8 +47,6 @@ public class CoinVerifier
 
 	public async IAsyncEnumerable<CoinVerifyInfo> GetCoinVerifyInfosAsync(uint256 roundId, [EnumeratorCancellation] CancellationToken cancellationToken)
 	{
-		var before = DateTimeOffset.UtcNow;
-
 		try
 		{
 			var roundVerifier = RoundVerifiers[roundId];
@@ -85,8 +83,6 @@ public class CoinVerifier
 		finally
 		{
 			await Whitelist.WriteToFileIfChangedAsync().ConfigureAwait(false);
-			var duration = DateTimeOffset.UtcNow - before;
-			RequestTimeStatista.Instance.Add("verifier-period", duration);
 		}
 	}
 
