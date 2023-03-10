@@ -1098,14 +1098,22 @@ public class CoinJoinClient
 		var theirCoins = constructionState.Inputs.Where(x => !registeredCoins.Any(y => x.Outpoint == y.Outpoint));
 		var registeredCoinEffectiveValues = registeredAliceClients.Select(x => x.EffectiveValue);
 		var theirCoinEffectiveValues = theirCoins.Select(x => x.EffectiveValue(roundParameters.MiningFeeRate, roundParameters.CoordinationFeeRate));
-		var outputValues = amountDecomposer.Decompose(registeredCoinEffectiveValues, theirCoinEffectiveValues);
+		var outputValues = amountDecomposer.Decompose(registeredCoinEffectiveValues, theirCoinEffectiveValues).ToArray();
 
 		// Get as many destinations as outputs we need.
+		var taprootOutputCount = outputValues.Count(output => output.ScriptType is ScriptType.Taproot);
+		var taprootScripts = new Stack<IDestination>(DestinationProvider.GetNextDestinations(taprootOutputCount, preferTaproot: true));
+		var segwitOutputCount = outputValues.Count(output => output.ScriptType is ScriptType.P2WPKH);
+		var segwitScripts = new Stack<IDestination>(DestinationProvider.GetNextDestinations(segwitOutputCount, preferTaproot: false));
+		
 		List<TxOut> outputTxOuts = new();
 		foreach (var output in outputValues)
 		{
-			var needTaprootOutput = output.ScriptType is ScriptType.Taproot;
-			var dest = DestinationProvider.GetNextDestinations(1, needTaprootOutput).First();
+			var destinationStack = output.ScriptType is ScriptType.Taproot
+				? taprootScripts
+				: segwitScripts;
+			
+			var dest = destinationStack.Pop();
 			var txOut = new TxOut(output.Amount, dest.ScriptPubKey);
 			outputTxOuts.Add(txOut);
 		}
