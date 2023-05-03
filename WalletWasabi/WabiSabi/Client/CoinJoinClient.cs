@@ -235,6 +235,8 @@ public class CoinJoinClient
 			return rs;
 		});
 
+		var coinJoinSuccessWithoutWallet = false;
+		
 		try
 		{
 			ImmutableArray<AliceClient> aliceClientsThatSigned = ImmutableArray<AliceClient>.Empty;
@@ -279,6 +281,13 @@ public class CoinJoinClient
 			roundState.LogInfo(msg);
 			var signedCoins = aliceClientsThatSigned.Select(a => a.SmartCoin).ToImmutableList();
 
+			// Coinjoin succeed but wallet had no input in it.
+			if (signedCoins.IsEmpty)
+			{
+				coinJoinSuccessWithoutWallet = true;
+				return new FailedCoinJoinResult();
+			}
+			
 			return roundState.EndRoundState switch
 			{
 				EndRoundState.TransactionBroadcasted => new SuccessfulCoinJoinResult(
@@ -307,7 +316,7 @@ public class CoinJoinClient
 
 			// Try to update to the latest roundState.
 			var currentRoundState = RoundStatusUpdater.TryGetRoundState(roundState.Id, out var latestRoundState) ? latestRoundState : roundState;
-			CoinJoinClientProgress.SafeInvoke(this, new RoundEnded(currentRoundState));
+			CoinJoinClientProgress.SafeInvoke(this, new RoundEnded(currentRoundState, coinJoinSuccessWithoutWallet));
 		}
 	}
 

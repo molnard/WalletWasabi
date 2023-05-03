@@ -334,6 +334,11 @@ public partial class CoinJoinStateViewModel : ViewModelBase
 				{
 					PauseSpreading = true;
 				}
+				else if (roundEnded.SuccessWithoutWallet)
+				{
+					CurrentStatus = RoundFinishedMessage;
+					StopCountDown();
+				}
 				else
 				{
 					CurrentStatus = roundEnded.LastRoundState.EndRoundState switch
