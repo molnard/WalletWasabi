@@ -282,15 +282,11 @@ public class CoinJoinClient
 			var signedCoins = aliceClientsThatSigned.Select(a => a.SmartCoin).ToImmutableList();
 
 			// Coinjoin succeed but wallet had no input in it.
-			if (signedCoins.IsEmpty)
-			{
-				coinJoinSuccessWithoutWallet = true;
-				return new FailedCoinJoinResult();
-			}
-			
+			var successWithoutWallet = signedCoins.IsEmpty && roundState.EndRoundState == EndRoundState.TransactionBroadcasted;
+
 			return roundState.EndRoundState switch
 			{
-				EndRoundState.TransactionBroadcasted => new SuccessfulCoinJoinResult(
+				EndRoundState.TransactionBroadcasted when !successWithoutWallet => new SuccessfulCoinJoinResult(
 					Coins: signedCoins,
 					OutputScripts: outputTxOuts.Select(o => o.ScriptPubKey).ToImmutableList(),
 					UnsignedCoinJoin: unsignedCoinJoin!),
