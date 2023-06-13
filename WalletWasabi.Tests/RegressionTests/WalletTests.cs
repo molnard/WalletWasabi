@@ -19,6 +19,10 @@ using WalletWasabi.Tests.XunitConfiguration;
 using WalletWasabi.Wallets;
 using WalletWasabi.WebClients.Wasabi;
 using Xunit;
+using WalletWasabi.Tests.UnitTests.Transactions;
+using WalletWasabi.Blockchain.Blocks;
+using WalletWasabi.Tests.UnitTests;
+using WalletWasabi.Fluent.Helpers;
 
 namespace WalletWasabi.Tests.RegressionTests;
 
@@ -410,6 +414,97 @@ public class WalletTests
 			await Common.WaitForFiltersToBeProcessedAsync(TimeSpan.FromSeconds(120), 1);
 			var res = await rpc.GetTxOutAsync(mempoolCoin.TransactionId, (int)mempoolCoin.Index, true);
 			Assert.Equal(new Height(bitcoinStore.SmartHeaderChain.TipHeight), mempoolCoin.Height);
+		}
+		finally
+		{
+			wallet.NewFilterProcessed -= Common.Wallet_NewFilterProcessed;
+			await wallet.StopAsync(CancellationToken.None);
+			await synchronizer.StopAsync();
+			await feeProvider.StopAsync(CancellationToken.None);
+			nodes?.Dispose();
+			node?.Disconnect();
+		}
+	}
+
+	[Fact]
+	public async Task WalletTurboSyncTestAsync()
+	{
+		(string password, IRPCClient rpc, Network network, _, ServiceConfiguration serviceConfiguration, BitcoinStore bitcoinStore, Backend.Global global) = await Common.InitializeTestEnvironmentAsync(RegTestFixture, 1);
+
+		// Create the services.
+		// 1. Create connection service.
+		NodesGroup nodes = new(global.Config.Network, requirements: Constants.NodeRequirements);
+		nodes.ConnectedNodes.Add(await RegTestFixture.BackendRegTestNode.CreateNewP2pNodeAsync());
+
+		Node node = await RegTestFixture.BackendRegTestNode.CreateNewP2pNodeAsync();
+		node.Behaviors.Add(bitcoinStore.CreateUntrustedP2pBehavior());
+
+		// 2. Create wasabi synchronizer service.
+		await using HttpClientFactory httpClientFactory = new(torEndPoint: null, backendUriGetter: () => new Uri(RegTestFixture.BackendEndPoint));
+		WasabiSynchronizer synchronizer = new(requestInterval: TimeSpan.FromSeconds(3), 1000, bitcoinStore, httpClientFactory);
+		HybridFeeProvider feeProvider = new(synchronizer, null);
+
+		// 3. Create key manager service.
+		var keyManager = KeyManager.CreateNew(out _, password, network);
+
+		// 4. Create wallet service.
+		var workDir = Helpers.Common.GetWorkDir();
+
+		IRepository<uint256, Block> blockRepository = bitcoinStore.BlockRepository;
+
+		using MemoryCache cache = new(new MemoryCacheOptions
+		{
+			SizeLimit = 1_000,
+			ExpirationScanFrequency = TimeSpan.FromSeconds(30)
+		});
+
+		await using SpecificNodeBlockProvider specificNodeBlockProvider = new(network, serviceConfiguration, httpClientFactory.TorEndpoint);
+
+		SmartBlockProvider blockProvider = new(
+			bitcoinStore.BlockRepository,
+			rpcBlockProvider: null,
+			specificNodeBlockProvider,
+			new P2PBlockProvider(network, nodes, httpClientFactory.IsTorEnabled),
+			cache);
+
+		using var wallet = Wallet.CreateAndRegisterServices(network, bitcoinStore, keyManager, synchronizer, workDir, serviceConfiguration, feeProvider, blockProvider);
+		wallet.NewFilterProcessed += Common.Wallet_NewFilterProcessed;
+
+		try
+		{
+			var receivingInternalKeyFirst = keyManager.GetKeys(isInternal: true).First();
+
+			await rpc.SendToAddressAsync(BitcoinAddress.Create(receivingInternalKeyFirst.P2wpkhScript.ToString(), Network.RegTest), Money.Coins(1));
+			var firstReceivingTx = TransactionProcessorTests.CreateCreditingTransaction(receivingInternalKeyFirst.P2wpkhScript, Money.Coins(1));
+			var firstSpendingTx = TransactionProcessorTests.CreateSpendingTransaction(firstReceivingTx.Transaction.Outputs.AsCoins(), null, null);
+
+			await rpc.SendRawTransactionAsync(firstReceivingTx.Transaction);
+			await rpc.SendRawTransactionAsync(firstSpendingTx.Transaction);
+			await rpc.GenerateAsync(1);
+
+			async Task<FilterModel> CreateFilterModelForTipBlockAsync()
+			{
+				var tip = await rpc.GetBestBlockHashAsync();
+				var block = await rpc.GetVerboseBlockAsync(tip);
+				var filter = IndexBuilderService.BuildFilterForBlock(block, IndexTypeConverter.ToRpcPubKeyTypes(IndexType.SegwitTaproot));
+				var smartHeader = new SmartHeader(block.Hash, block.PrevBlockHash, (uint)block.Height + 1, block.BlockTime);
+				return new FilterModel(smartHeader, filter);
+			}
+
+			var filterOne = await CreateFilterModelForTipBlockAsync();
+
+			// We are reusing the address.
+			var secondReceivingTx = TransactionProcessorTests.CreateCreditingTransaction(receivingInternalKeyFirst.P2wpkhScript, Money.Coins(2));
+			await rpc.SendRawTransactionAsync(secondReceivingTx.Transaction);
+			await rpc.GenerateAsync(1);
+			var filterTwoReuse = await CreateFilterModelForTipBlockAsync();
+
+			await bitcoinStore.IndexStore.AddNewFiltersAsync(new[] { filterOne, filterTwoReuse });
+
+			await wallet.PerformWalletSynchronizationAsync(SyncType.Turbo, CancellationToken.None);
+			await wallet.PerformWalletSynchronizationAsync(SyncType.NonTurbo, CancellationToken.None);
+
+			Assert.Equal(2, wallet.Coins.Count());
 		}
 		finally
 		{

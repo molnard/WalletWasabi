@@ -1383,7 +1383,7 @@ public class TransactionProcessorTests
 		return new SmartTransaction(tx, height == 0 ? Height.Mempool : new Height(height));
 	}
 
-	private static SmartTransaction CreateSpendingTransaction(IEnumerable<Coin> coins, Script scriptPubKey, Script scriptPubKeyChange, bool replaceable = false, int height = 0)
+	public static SmartTransaction CreateSpendingTransaction(IEnumerable<Coin> coins, Script scriptPubKey, Script scriptPubKeyChange, bool replaceable = false, int height = 0)
 	{
 		var tx = Network.RegTest.CreateTransaction();
 		var amount = Money.Zero;
@@ -1397,7 +1397,7 @@ public class TransactionProcessorTests
 		return new SmartTransaction(tx, height == 0 ? Height.Mempool : new Height(height));
 	}
 
-	private static SmartTransaction CreateCreditingTransaction(Script scriptPubKey, Money amount, int height = 0)
+	public static SmartTransaction CreateCreditingTransaction(Script scriptPubKey, Money amount, int height = 0)
 	{
 		var tx = Network.RegTest.CreateTransaction();
 		tx.Version = 1;
