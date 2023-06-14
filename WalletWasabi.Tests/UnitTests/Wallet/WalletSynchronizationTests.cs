@@ -37,9 +37,9 @@ public class WalletSynchronizationTests
 
 		Block CreateBlock(BitcoinAddress address, IEnumerable<Transaction>? transactions = null)
 		{
-			Block block = Network.Main.Consensus.ConsensusFactory.CreateBlock();
+			Block block = network.Consensus.ConsensusFactory.CreateBlock();
 			block.Header.HashPrevBlock = blockChain.Keys.LastOrDefault() ?? uint256.Zero;
-			var coinBaseTransaction = Transaction.Create(Network.Main);
+			var coinBaseTransaction = Transaction.Create(network);
 
 			var amount = Money.Coins(5) + Money.Satoshis(blockChain.Count); // Add block height to make sure the coinbase tx hash differs.
 			coinBaseTransaction.Outputs.Add(amount, address);
@@ -75,7 +75,7 @@ public class WalletSynchronizationTests
 
 		rpc.OnSendRawTransactionAsync = (tx) =>
 		{
-			CreateBlock(minerDestination.ScriptPubKey.GetDestinationAddress(Network.Main)!, new[] { tx });
+			CreateBlock(minerDestination.ScriptPubKey.GetDestinationAddress(network)!, new[] { tx });
 			return tx.GetHash();
 		};
 
@@ -127,7 +127,7 @@ public class WalletSynchronizationTests
 		await using SpecificNodeBlockProvider specificNodeBlockProvider = new(network, serviceConfiguration, null);
 		SmartBlockProvider blockProvider = new(bitcoinStore.BlockRepository, rpcBlockProvider: null, null, null, cache);
 
-		using var wallet1 = WalletWasabi.Wallets.Wallet.CreateAndRegisterServices(Network.Main, bitcoinStore, keyManager, synchronizer, dir, serviceConfiguration, feeProvider, blockProvider);
+		using var wallet1 = WalletWasabi.Wallets.Wallet.CreateAndRegisterServices(network, bitcoinStore, keyManager, synchronizer, dir, serviceConfiguration, feeProvider, blockProvider);
 
 		await wallet1.PerformWalletSynchronizationAsync(SyncType.Turbo, CancellationToken.None);
 		await wallet1.PerformWalletSynchronizationAsync(SyncType.NonTurbo, CancellationToken.None);
