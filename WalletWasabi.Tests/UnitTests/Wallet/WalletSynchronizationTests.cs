@@ -96,6 +96,8 @@ public class WalletSynchronizationTests
 		KeyManager keyManager = KeyManager.CreateNewWatchOnly(wallet.ExtKey.Neuter(), null!);
 		var keys = keyManager.GetKeys(k => true); //Make sure keys are asserted.
 
+		Assert.Contains(keys.Where(key => key.IsInternal), key => key.P2wpkhScript == destination.ScriptPubKey);
+
 		var dir = Common.GetWorkDir("WalletSynchronizationTests", "WalletTurboSyncTest2Async");
 
 		File.Delete(Path.Combine(dir, "IndexStore.sqlite")); //Make sure to start with an empty DB
