@@ -24,7 +24,7 @@ public class TestWallet : IKeyChain, IDestinationProvider
 
 	private IRPCClient Rpc { get; }
 	private List<Coin> Utxos { get; } = new();
-	private ExtKey ExtKey { get; }
+	public ExtKey ExtKey { get; }
 	private Dictionary<Script, ExtKey> ScriptPubKeys { get; } = new();
 	private uint NextKeyIndex { get; set; } = 0;
 

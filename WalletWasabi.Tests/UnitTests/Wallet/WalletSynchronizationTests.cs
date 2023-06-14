@@ -1,11 +1,35 @@
+using Microsoft.AspNetCore.Connections;
+using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.FlowAnalysis;
+using Microsoft.Extensions.Caching.Memory;
+using Moq;
 using NBitcoin;
+using NBitcoin.Protocol;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using WalletWasabi.Backend.Models;
+using WalletWasabi.BitcoinCore.Rpc;
+using WalletWasabi.BitcoinCore.Rpc.Models;
+using WalletWasabi.Blockchain.Analysis.FeesEstimation;
+using WalletWasabi.Blockchain.BlockFilters;
+using WalletWasabi.Blockchain.Blocks;
+using WalletWasabi.Blockchain.Keys;
+using WalletWasabi.Blockchain.Mempool;
+using WalletWasabi.Blockchain.Transactions;
+using WalletWasabi.Models;
+using WalletWasabi.Services;
+using WalletWasabi.Stores;
+using WalletWasabi.Tests.XunitConfiguration;
+using WalletWasabi.Wallets;
+using WalletWasabi.WebClients.Wasabi;
 using Xunit;
+using static System.Net.WebRequestMethods;
 
 namespace WalletWasabi.Tests.UnitTests.Wallet;
 
@@ -14,6 +38,7 @@ public class WalletSynchronizationTests
 	[Fact]
 	public async Task WalletTurboSyncTest2Async()
 	{
+		var network = Network.RegTest;
 		FeeRate feeRate = FeeRate.Zero;
 		var rpc = new MockRpcClient();
 
@@ -24,7 +49,9 @@ public class WalletSynchronizationTests
 			Block block = Network.Main.Consensus.ConsensusFactory.CreateBlock();
 			block.Header.HashPrevBlock = blockChain.Keys.LastOrDefault() ?? uint256.Zero;
 			var coinBaseTransaction = Transaction.Create(Network.Main);
-			coinBaseTransaction.Outputs.Add(Money.Coins(5), address);
+
+			var amount = Money.Coins(5) + Money.Satoshis(blockChain.Count); // Add block height to make sure the coinbase tx hash differs.
+			coinBaseTransaction.Outputs.Add(amount, address);
 			block.AddTransaction(coinBaseTransaction);
 
 			if (transactions is not null)
@@ -74,5 +101,106 @@ public class WalletSynchronizationTests
 		var txId2 = await minerWallet.SendToAsync(Money.Coins(1), destination.ScriptPubKey, feeRate, CancellationToken.None);
 		var tx2 = await rpc.GetRawTransactionAsync(txId2);
 		wallet.ScanTransaction(tx2);
+
+		//KeyManager keyManager = new KeyManager(null, null, null, wallet.ExtKey.Neuter(), null, true, 21, new BlockchainState(Network.Main, 0, 0));
+
+		KeyManager keyManager = KeyManager.CreateNewWatchOnly(wallet.ExtKey.Neuter(), null!);
+		var keys = keyManager.GetKeys(k => true); //Make sure keys are asserted.
+
+		var dir = Tests.Helpers.Common.GetWorkDir("WalletSynchronizationTests", "WalletTurboSyncTest2Async");
+
+		System.IO.File.Delete(Path.Combine(dir, "IndexStore.sqlite"));
+		await using var indexStore = new IndexStore(Path.Combine(dir, "indexStore"), network, new SmartHeaderChain());
+
+		await using var transactionStore = new AllTransactionStore(Path.Combine(dir, "transactionStore"), network);
+		var mempoolService = new MempoolService();
+
+		var blockRepositoryMock = new Mock<IRepository<uint256, Block>>();
+		blockRepositoryMock
+			.Setup(br => br.TryGetAsync(It.IsAny<uint256>(), It.IsAny<CancellationToken>()))
+			.Returns((uint256 hash, CancellationToken _) => Task.FromResult(blockChain[hash])!);
+		blockRepositoryMock
+			.Setup(br => br.SaveAsync(It.IsAny<Block>(), It.IsAny<CancellationToken>()))
+			.Returns((Block _, CancellationToken _) => Task.CompletedTask);
+
+		var bitcoinStore = new BitcoinStore(indexStore, transactionStore, mempoolService, blockRepositoryMock.Object);
+		await bitcoinStore.InitializeAsync();
+
+		//StartingFilter already added to IndexStore at this point.
+		var filters = BuildFiltersForBlockChain(blockChain, network);
+		await indexStore.AddNewFiltersAsync(filters.Skip(1));
+
+		var serviceConfiguration = new ServiceConfiguration(new UriEndPoint(new Uri("http://www.nomatter.dontcare")), Money.Coins(WalletWasabi.Helpers.Constants.DefaultDustThreshold));
+
+		await using HttpClientFactory httpClientFactory = new(torEndPoint: null, backendUriGetter: () => null!);
+		WasabiSynchronizer synchronizer = new(requestInterval: TimeSpan.FromSeconds(3), 1000, bitcoinStore, httpClientFactory);
+		HybridFeeProvider feeProvider = new(synchronizer, null);
+
+		IRepository<uint256, Block> blockRepository = bitcoinStore.BlockRepository;
+
+		using MemoryCache cache = new(new MemoryCacheOptions
+		{
+			SizeLimit = 1_000,
+			ExpirationScanFrequency = TimeSpan.FromSeconds(30)
+		});
+
+		await using SpecificNodeBlockProvider specificNodeBlockProvider = new(network, serviceConfiguration, null);
+
+		SmartBlockProvider blockProvider = new(
+			bitcoinStore.BlockRepository,
+			rpcBlockProvider: null,
+			null,
+			null,
+			cache);
+
+		using var wallet1 = WalletWasabi.Wallets.Wallet.CreateAndRegisterServices(Network.Main, bitcoinStore, keyManager, synchronizer, dir, serviceConfiguration, feeProvider, blockProvider);
+
+		await wallet1.PerformWalletSynchronizationAsync(SyncType.Turbo, CancellationToken.None);
+		await wallet1.PerformWalletSynchronizationAsync(SyncType.NonTurbo, CancellationToken.None);
+
+		Assert.Equal(2, wallet1.Coins.Count());
+	}
+
+	private IEnumerable<FilterModel> BuildFiltersForBlockChain(Dictionary<uint256, Block> blockChain, Network network)
+	{
+		Dictionary<OutPoint, Script> outPoints = blockChain.Values
+			.SelectMany(block => block.Transactions)
+			.SelectMany(tx => tx.Outputs.AsIndexedOutputs())
+			.ToDictionary(output => new OutPoint(output.Transaction, output.N), output => output.TxOut.ScriptPubKey);
+
+		List<FilterModel> filters = new();
+
+		var startingFilter = StartingFilters.GetStartingFilter(network);
+		filters.Add(startingFilter);
+
+		foreach (var block in blockChain.Values)
+		{
+			var inputScriptPubKeys = block.Transactions
+				.SelectMany(tx => tx.Inputs)
+				.Where(input => outPoints.ContainsKey(input.PrevOut))
+				.Select(input => outPoints[input.PrevOut]);
+
+			var outputScriptPubKeys = block.Transactions
+				.SelectMany(tx => tx.Outputs)
+				.Select(output => output.ScriptPubKey);
+
+			var scripts = inputScriptPubKeys.Union(outputScriptPubKeys);
+			var entries = scripts.Any() ? scripts.Select(x => x.ToCompressedBytes()) : IndexBuilderService.DummyScript;
+
+			var filter = new GolombRiceFilterBuilder()
+				.SetKey(block.GetHash())
+				.SetP(20)
+				.SetM(1 << 20)
+				.AddEntries(entries)
+				.Build();
+
+			var tipFilter = filters.Last();
+
+			var smartHeader = new SmartHeader(block.GetHash(), tipFilter.Header.BlockHash, tipFilter.Header.Height + 1, DateTimeOffset.UtcNow);
+
+			filters.Add(new FilterModel(smartHeader, filter));
+		}
+
+		return filters;
 	}
 }

@@ -23,6 +23,8 @@ using WalletWasabi.Tests.UnitTests.Transactions;
 using WalletWasabi.Blockchain.Blocks;
 using WalletWasabi.Tests.UnitTests;
 using WalletWasabi.Fluent.Helpers;
+using WalletWasabi.Blockchain.Transactions;
+using WalletWasabi.WabiSabi.Client;
 
 namespace WalletWasabi.Tests.RegressionTests;
 
@@ -427,7 +429,7 @@ public class WalletTests
 	}
 
 	[Fact]
-	public async Task WalletTurboSyncTestAsync()
+	public async Task WalletTurboSyncTestNotWorkingAsync()
 	{
 		(string password, IRPCClient rpc, Network network, _, ServiceConfiguration serviceConfiguration, BitcoinStore bitcoinStore, Backend.Global global) = await Common.InitializeTestEnvironmentAsync(RegTestFixture, 1);
 
@@ -472,14 +474,30 @@ public class WalletTests
 
 		try
 		{
-			var receivingInternalKeyFirst = keyManager.GetKeys(isInternal: true).First();
+			InternalDestinationProvider internalDestinationProvider = new(keyManager);
+			var walletInternalKey = internalDestinationProvider.GetNextDestinations(1, false).First();
+			var walletInternalAddress = walletInternalKey.ScriptPubKey.GetDestinationAddress(network)!;
 
-			await rpc.SendToAddressAsync(BitcoinAddress.Create(receivingInternalKeyFirst.P2wpkhScript.ToString(), Network.RegTest), Money.Coins(1));
-			var firstReceivingTx = TransactionProcessorTests.CreateCreditingTransaction(receivingInternalKeyFirst.P2wpkhScript, Money.Coins(1));
-			var firstSpendingTx = TransactionProcessorTests.CreateSpendingTransaction(firstReceivingTx.Transaction.Outputs.AsCoins(), null, null);
+			var txId = await rpc.SendToAddressAsync(walletInternalAddress, Money.Coins(5));
 
-			await rpc.SendRawTransactionAsync(firstReceivingTx.Transaction);
-			await rpc.SendRawTransactionAsync(firstSpendingTx.Transaction);
+			using Key privateKey = new(); // generate a random private key
+			var outsideAddress = privateKey.PubKey.GetAddress(ScriptPubKeyType.Segwit, network);
+			var feeRate = new FeeRate(10m);
+			var buildTxResult = TransactionHelpers.BuildChangelessTransaction(wallet, outsideAddress, new LabelsArray(), feeRate, new[] { wallet.Coins.First() });
+
+			//var spending = network.CreateTransaction();
+			//var outputToSpend = tx.Outputs.AsIndexedOutputs().Single(output => output. == receivingInternalKeyFirst.P2wpkhScript);
+			//spending.Inputs.Add();
+
+			//tx.Inputs.Add(, Script.Empty, WitScript.Empty);
+			//tx.Outputs.Add(coin.Amount, scriptPubKey ?? Script.Empty);
+			//return new SmartTransaction(tx, height == 0 ? Height.Mempool : new Height(height));
+
+			//var firstReceivingTx = TransactionProcessorTests.CreateCreditingTransaction(receivingInternalKeyFirst.P2pkhScript, Money.Coins(1));
+			//var firstSpendingTx = TransactionProcessorTests.CreateSpendingTransaction(firstReceivingTx.Transaction.Outputs.AsCoins(), null, null);
+
+			await rpc.SendRawTransactionAsync(buildTxResult.Transaction.Transaction);
+			//await rpc.SendRawTransactionAsync(firstSpendingTx.Transaction);
 			await rpc.GenerateAsync(1);
 
 			async Task<FilterModel> CreateFilterModelForTipBlockAsync()
@@ -494,8 +512,8 @@ public class WalletTests
 			var filterOne = await CreateFilterModelForTipBlockAsync();
 
 			// We are reusing the address.
-			var secondReceivingTx = TransactionProcessorTests.CreateCreditingTransaction(receivingInternalKeyFirst.P2wpkhScript, Money.Coins(2));
-			await rpc.SendRawTransactionAsync(secondReceivingTx.Transaction);
+			//var secondReceivingTx = TransactionProcessorTests.CreateCreditingTransaction(receivingInternalKeyFirst.P2pkhScript, Money.Coins(2));
+			//await rpc.SendRawTransactionAsync(secondReceivingTx.Transaction);
 			await rpc.GenerateAsync(1);
 			var filterTwoReuse = await CreateFilterModelForTipBlockAsync();
 
