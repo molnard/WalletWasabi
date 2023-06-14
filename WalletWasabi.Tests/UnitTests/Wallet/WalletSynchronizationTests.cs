@@ -1,21 +1,13 @@
 using Microsoft.AspNetCore.Connections;
-using Microsoft.AspNetCore.HttpOverrides;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
-using Microsoft.CodeAnalysis.FlowAnalysis;
 using Microsoft.Extensions.Caching.Memory;
 using Moq;
 using NBitcoin;
-using NBitcoin.Protocol;
-using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using WalletWasabi.Backend.Models;
-using WalletWasabi.BitcoinCore.Rpc;
-using WalletWasabi.BitcoinCore.Rpc.Models;
 using WalletWasabi.Blockchain.Analysis.FeesEstimation;
 using WalletWasabi.Blockchain.BlockFilters;
 using WalletWasabi.Blockchain.Blocks;
@@ -25,11 +17,10 @@ using WalletWasabi.Blockchain.Transactions;
 using WalletWasabi.Models;
 using WalletWasabi.Services;
 using WalletWasabi.Stores;
-using WalletWasabi.Tests.XunitConfiguration;
+using WalletWasabi.Tests.Helpers;
 using WalletWasabi.Wallets;
 using WalletWasabi.WebClients.Wasabi;
 using Xunit;
-using static System.Net.WebRequestMethods;
 
 namespace WalletWasabi.Tests.UnitTests.Wallet;
 
@@ -102,14 +93,12 @@ public class WalletSynchronizationTests
 		var tx2 = await rpc.GetRawTransactionAsync(txId2);
 		wallet.ScanTransaction(tx2);
 
-		//KeyManager keyManager = new KeyManager(null, null, null, wallet.ExtKey.Neuter(), null, true, 21, new BlockchainState(Network.Main, 0, 0));
-
 		KeyManager keyManager = KeyManager.CreateNewWatchOnly(wallet.ExtKey.Neuter(), null!);
 		var keys = keyManager.GetKeys(k => true); //Make sure keys are asserted.
 
-		var dir = Tests.Helpers.Common.GetWorkDir("WalletSynchronizationTests", "WalletTurboSyncTest2Async");
+		var dir = Common.GetWorkDir("WalletSynchronizationTests", "WalletTurboSyncTest2Async");
 
-		System.IO.File.Delete(Path.Combine(dir, "IndexStore.sqlite"));
+		File.Delete(Path.Combine(dir, "IndexStore.sqlite")); //Make sure to start with an empty DB
 		await using var indexStore = new IndexStore(Path.Combine(dir, "indexStore"), network, new SmartHeaderChain());
 
 		await using var transactionStore = new AllTransactionStore(Path.Combine(dir, "transactionStore"), network);
@@ -124,34 +113,19 @@ public class WalletSynchronizationTests
 			.Returns((Block _, CancellationToken _) => Task.CompletedTask);
 
 		var bitcoinStore = new BitcoinStore(indexStore, transactionStore, mempoolService, blockRepositoryMock.Object);
-		await bitcoinStore.InitializeAsync();
+		await bitcoinStore.InitializeAsync(); //StartingFilter already added to IndexStore after this line.
 
-		//StartingFilter already added to IndexStore at this point.
 		var filters = BuildFiltersForBlockChain(blockChain, network);
 		await indexStore.AddNewFiltersAsync(filters.Skip(1));
 
 		var serviceConfiguration = new ServiceConfiguration(new UriEndPoint(new Uri("http://www.nomatter.dontcare")), Money.Coins(WalletWasabi.Helpers.Constants.DefaultDustThreshold));
-
 		await using HttpClientFactory httpClientFactory = new(torEndPoint: null, backendUriGetter: () => null!);
 		WasabiSynchronizer synchronizer = new(requestInterval: TimeSpan.FromSeconds(3), 1000, bitcoinStore, httpClientFactory);
 		HybridFeeProvider feeProvider = new(synchronizer, null);
-
 		IRepository<uint256, Block> blockRepository = bitcoinStore.BlockRepository;
-
-		using MemoryCache cache = new(new MemoryCacheOptions
-		{
-			SizeLimit = 1_000,
-			ExpirationScanFrequency = TimeSpan.FromSeconds(30)
-		});
-
+		using MemoryCache cache = new(new MemoryCacheOptions());
 		await using SpecificNodeBlockProvider specificNodeBlockProvider = new(network, serviceConfiguration, null);
-
-		SmartBlockProvider blockProvider = new(
-			bitcoinStore.BlockRepository,
-			rpcBlockProvider: null,
-			null,
-			null,
-			cache);
+		SmartBlockProvider blockProvider = new(bitcoinStore.BlockRepository, rpcBlockProvider: null, null, null, cache);
 
 		using var wallet1 = WalletWasabi.Wallets.Wallet.CreateAndRegisterServices(Network.Main, bitcoinStore, keyManager, synchronizer, dir, serviceConfiguration, feeProvider, blockProvider);
 
