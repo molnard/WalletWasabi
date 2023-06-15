@@ -13,6 +13,7 @@ using WalletWasabi.Blockchain.BlockFilters;
 using WalletWasabi.Blockchain.Blocks;
 using WalletWasabi.Blockchain.Keys;
 using WalletWasabi.Blockchain.Mempool;
+using WalletWasabi.Blockchain.TransactionOutputs;
 using WalletWasabi.Blockchain.Transactions;
 using WalletWasabi.Models;
 using WalletWasabi.Services;
@@ -67,7 +68,9 @@ public class WalletSynchronizationTests
 		rpc.OnGetBlockAsync = (blockHash) => Task.FromResult(blockChain[blockHash]);
 
 		rpc.OnGetRawTransactionAsync = (txHash, _) => Task.FromResult(
-			blockChain.Values.SelectMany(block => block.Transactions).First(tx => tx.GetHash() == txHash));
+			blockChain.Values
+			   .SelectMany(block => block.Transactions)
+			   .First(tx => tx.GetHash() == txHash));
 
 		var minerWallet = new TestWallet("MinerWallet", rpc);
 		await minerWallet.GenerateAsync(101, CancellationToken.None);
@@ -93,14 +96,13 @@ public class WalletSynchronizationTests
 		var tx2 = await rpc.GetRawTransactionAsync(txId2);
 		wallet.ScanTransaction(tx2);
 
-		KeyManager keyManager = KeyManager.CreateNewWatchOnly(wallet.ExtKey.Neuter(), null!);
+		KeyManager keyManager = KeyManager.CreateNewWatchOnly(wallet.ExtKey.Derive(KeyPath.Parse("m/84'/0'/0'")).Neuter(), null!);
 		var keys = keyManager.GetKeys(k => true); //Make sure keys are asserted.
 
 		Assert.Contains(keys.Where(key => key.IsInternal), key => key.P2wpkhScript == destination.ScriptPubKey);
 
 		var dir = Common.GetWorkDir("WalletSynchronizationTests", "WalletTurboSyncTest2Async");
 
-		File.Delete(Path.Combine(dir, "IndexStore.sqlite")); //Make sure to start with an empty DB
 		await using var indexStore = new IndexStore(Path.Combine(dir, "indexStore"), network, new SmartHeaderChain());
 
 		await using var transactionStore = new AllTransactionStore(Path.Combine(dir, "transactionStore"), network);
@@ -134,7 +136,8 @@ public class WalletSynchronizationTests
 		await wallet1.PerformWalletSynchronizationAsync(SyncType.Turbo, CancellationToken.None);
 		await wallet1.PerformWalletSynchronizationAsync(SyncType.NonTurbo, CancellationToken.None);
 
-		Assert.Equal(2, wallet1.Coins.Count());
+		var coins = wallet1.Coins as CoinsRegistry;
+		Assert.Equal(2, coins.AsAllCoinsView().Count());
 	}
 
 	private IEnumerable<FilterModel> BuildFiltersForBlockChain(Dictionary<uint256, Block> blockChain, Network network)
