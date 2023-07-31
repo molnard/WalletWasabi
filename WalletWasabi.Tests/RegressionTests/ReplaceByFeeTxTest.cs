@@ -47,6 +47,7 @@ public class ReplaceByFeeTxTest : IClassFixture<RegTestFixture>
 		ServiceConfiguration serviceConfiguration = setup.ServiceConfiguration;
 		string password = setup.Password;
 
+		bitcoinStore.IndexStore.NewFilters += setup.Wallet_NewFiltersProcessed;
 		// Create the services.
 		// 1. Create connection service.
 		NodesGroup nodes = new(global.Config.Network, requirements: Constants.NodeRequirements);
@@ -80,6 +81,7 @@ public class ReplaceByFeeTxTest : IClassFixture<RegTestFixture>
 
 		using var wallet = Wallet.CreateAndRegisterServices(network, bitcoinStore, keyManager, synchronizer, workDir, serviceConfiguration, feeProvider, blockProvider);
 		wallet.NewFilterProcessed += setup.Wallet_NewFilterProcessed;
+		await wallet.WalletFilterProcessor.StartAsync(CancellationToken.None);
 
 		Assert.Empty(wallet.Coins);
 
