@@ -276,6 +276,13 @@ public class WalletManager : IWalletProvider
 		WalletStateChanged?.Invoke(sender, e);
 	}
 
+	public void RenameWalletOnQuit(string currentName, string newName)
+	{
+		_walletRenameJobs.Add((currentName, newName));
+	}
+
+	private List<(string oldname, string newname)> _walletRenameJobs = new List<(string oldname, string newname)>();
+
 	public async Task RemoveAndStopAllAsync(CancellationToken cancel)
 	{
 		lock (Lock)
@@ -330,6 +337,11 @@ public class WalletManager : IWalletProvider
 		}
 
 		CancelAllTasks.Dispose();
+
+		foreach (var job in _walletRenameJobs)
+		{
+			File.Move(job.oldname, job.newname);
+		}
 	}
 
 	public void ProcessCoinJoin(SmartTransaction tx)
