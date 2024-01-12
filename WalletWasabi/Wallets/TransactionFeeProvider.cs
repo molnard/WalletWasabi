@@ -121,11 +121,20 @@ public class TransactionFeeProvider : BackgroundService
 			}
 
 			// While we have capacity, read the channel and add new tasks. Otherwise items wait in the channel.
-			while (activeTasks.Count < MaximumRequestsInParallel && TransactionIdChannel.Reader.TryRead(out var txId))
+			if (activeTasks.Count < MaximumRequestsInParallel && TransactionIdChannel.Reader.TryPeek(out var _))
 			{
-				// Start the task and add.
-				var task = Task.Run(async () => await ScheduledTask(txId).ConfigureAwait(false), cancel);
-				activeTasks.Add(task);
+				List<uint256> todo = [];
+				await foreach (var txId in TransactionIdChannel.Reader.ReadAllAsync(cancel))
+				{
+					todo.Add(txId);
+				}
+
+				foreach (var txId in todo.OrderBy(t => t.ToString()))
+				{
+					// Start the task and add.
+					var task = Task.Run(async () => await ScheduledTask(txId).ConfigureAwait(false), cancel);
+					activeTasks.Add(task);
+				}
 			}
 
 			// Check if something is completed.
