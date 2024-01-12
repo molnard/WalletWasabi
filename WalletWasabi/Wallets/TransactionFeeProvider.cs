@@ -3,6 +3,7 @@ using NBitcoin;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Threading;
@@ -85,33 +86,62 @@ public class TransactionFeeProvider : BackgroundService
 	{
 		if (!tx.Confirmed && tx.ForeignInputs.Count != 0)
 		{
-			TransactionIdChannel.Writer.TryWrite(tx.GetHash());
+			if (!TransactionIdChannel.Writer.TryWrite(tx.GetHash()))
+			{
+				Logger.LogError("Failed to write channel.");
+			}
 		}
 	}
 
 	protected override async Task ExecuteAsync(CancellationToken cancel)
 	{
 		List<Task> activeTasks = new(capacity: MaximumRequestsInParallel);
+
 		while (!cancel.IsCancellationRequested)
 		{
-			if (activeTasks.Count >= MaximumRequestsInParallel)
+			if (activeTasks.Count == 0)
 			{
-				continue;
+				// We have nothing to do so just wait until we got a new request.
+				await TransactionIdChannel.Reader.WaitToReadAsync(cancel).ConfigureAwait(false);
+			}
+			else
+			{
+				// Preparing cancellation for cleanup at the end.
+				using CancellationTokenSource waitingCts = new();
+				using CancellationTokenSource linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancel, waitingCts.Token);
+
+				var waitForAnyCompletedTask = Task.Run(async () => await Task.WhenAny(activeTasks).WithCancellation(linkedCts.Token).ConfigureAwait(false), linkedCts.Token);
+				var waitForRequestTask = Task.Run(async () => await TransactionIdChannel.Reader.WaitToReadAsync(linkedCts.Token).ConfigureAwait(false), linkedCts.Token);
+
+				// Wait if we got a new request or any task completed.
+				await Task.WhenAny(waitForRequestTask, waitForAnyCompletedTask).ConfigureAwait(false);
+
+				// Cleanup pending tasks
+				linkedCts.Cancel();
 			}
 
-			if (TransactionIdChannel.Reader.TryRead(out var txidToFetch) && txidToFetch is not null)
+			// While we have capacity, read the channel and add new tasks. Otherwise items wait in the channel.
+			while (activeTasks.Count < MaximumRequestsInParallel && TransactionIdChannel.Reader.TryRead(out var txId))
 			{
-				var task = Task.Run(async () => await ScheduledTask(txidToFetch).ConfigureAwait(false), cancel);
+				// Start the task and add.
+				var task = Task.Run(async () => await ScheduledTask(txId).ConfigureAwait(false), cancel);
 				activeTasks.Add(task);
 			}
 
-			if (activeTasks.Count == 0)
+			// Check if something is completed.
+			while (activeTasks.FirstOrDefault(t => t.IsCompleted) is { } completedTask)
 			{
-				continue;
+				activeTasks.Remove(completedTask);
+				try
+				{
+					// We can handle stuff here synchronously. Like invoke the event or hadle exceptions whatever.
+					await completedTask.ConfigureAwait(false);
+				}
+				catch (Exception)
+				{
+					// Do nothing.
+				}
 			}
-
-			var completedTask = await Task.WhenAny(activeTasks).ConfigureAwait(false);
-			activeTasks.Remove(completedTask);
 		}
 
 		async Task ScheduledTask(uint256 txid)
