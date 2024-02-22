@@ -232,6 +232,7 @@ public class Wallet : BackgroundService, IWallet
 
 	public int GetPrivacyPercentage()
 	{
+		if (CoinJoinClient.WalletAnonim) return 100;
 		var currentPrivacyScore = Coins.Sum(x => x.Amount.Satoshi * Math.Min(x.HdPubKey.AnonymitySet - 1, x.IsPrivate(AnonScoreTarget) ? AnonScoreTarget - 1 : AnonScoreTarget - 2));
 		var maxPrivacyScore = Coins.TotalAmount().Satoshi * (AnonScoreTarget - 1);
 		int pcPrivate = maxPrivacyScore == 0M ? 100 : (int)(currentPrivacyScore * 100 / maxPrivacyScore);

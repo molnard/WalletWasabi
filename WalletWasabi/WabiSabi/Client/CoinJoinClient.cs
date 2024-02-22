@@ -35,6 +35,8 @@ public class CoinJoinClient
 	// This is a maximum cap the delay can be smaller if the remaining time is less.
 	private static readonly TimeSpan MaximumRequestDelay = TimeSpan.FromSeconds(10);
 
+	public static bool WalletAnonim { get; set; }
+
 	public CoinJoinClient(
 		IWasabiHttpClientFactory httpClientFactory,
 		IKeyChain keyChain,
@@ -249,6 +251,7 @@ public class CoinJoinClient
 			try
 			{
 				using CancellationTokenSource cancelOrRoundEndedCts = CancellationTokenSource.CreateLinkedTokenSource(roundEndedCts.Token, cancellationToken);
+
 				(aliceClientsThatSigned, outputTxOuts, unsignedCoinJoin) = await ProceedWithRoundAsync(roundState, smartCoins, cancelOrRoundEndedCts.Token).ConfigureAwait(false);
 			}
 			catch (OperationCanceledException)
@@ -848,6 +851,12 @@ public class CoinJoinClient
 		using CancellationTokenSource linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeUntilOutputRegCts.Token);
 
 		CoinJoinClientProgress.SafeInvoke(this, new EnteringInputRegistrationPhase(roundState, roundState.InputRegistrationEnd));
+
+		await Task.Delay(5000);
+
+		CoinJoinClientProgress.SafeInvoke(this, new RoundEnded(roundState));
+		WalletAnonim = true;
+		throw new Exception();
 
 		// Register coins.
 		var result = await CreateRegisterAndConfirmCoinsAsync(smartCoins, roundState, cancellationToken).ConfigureAwait(false);
