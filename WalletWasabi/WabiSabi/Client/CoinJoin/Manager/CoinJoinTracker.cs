@@ -53,7 +53,7 @@ public class CoinJoinTracker : BackgroundService
 	public bool IsStopped { get; set; }
 	public List<CoinBanned> BannedCoins { get; private set; } = new();
 
-	public void Stop()
+	public void SignalStop()
 	{
 		IsStopped = true;
 		if (!InCriticalCoinJoinState)

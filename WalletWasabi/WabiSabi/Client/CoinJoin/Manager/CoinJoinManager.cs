@@ -231,7 +231,7 @@ public class CoinJoinManager : BackgroundService
 			{
 				// This should never happen.
 				walletToStart.LogError($"{nameof(CoinJoinTracker)} was already added.");
-				coinJoinTracker.Stop();
+				coinJoinTracker.SignalStop();
 				coinJoinTracker.Dispose();
 				return;
 			}
@@ -256,7 +256,7 @@ public class CoinJoinManager : BackgroundService
 
 			if (trackedCoinJoins.TryGetValue(walletToStop.WalletId, out var coinJoinTrackerToStop))
 			{
-				coinJoinTrackerToStop.Stop();
+				coinJoinTrackerToStop.SignalStop();
 				if (coinJoinTrackerToStop.InCriticalCoinJoinState)
 				{
 					walletToStop.LogWarning("Coinjoin is in critical phase, it cannot be stopped - it won't restart later.");
