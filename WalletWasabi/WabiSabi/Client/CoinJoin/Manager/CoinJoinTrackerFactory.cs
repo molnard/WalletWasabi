@@ -52,6 +52,8 @@ public class CoinJoinTrackerFactory
 			skipFactors: wallet.CoinjoinSkipFactors,
 			doNotRegisterInLastMinuteTimeLimit: TimeSpan.FromMinutes(1));
 
-		return new CoinJoinTracker(wallet, coinJoinClient, coinCandidatesFunc, stopWhenAllMixed, overridePlebStop, outputWallet, CancellationToken);
+		var tracker = new CoinJoinTracker(wallet, coinJoinClient, coinCandidatesFunc, stopWhenAllMixed, overridePlebStop, outputWallet);
+		await tracker.StartAsync(CancellationToken).ConfigureAwait(false);
+		return tracker;
 	}
 }
