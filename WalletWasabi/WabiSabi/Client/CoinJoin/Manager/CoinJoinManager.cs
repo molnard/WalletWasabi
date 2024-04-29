@@ -17,6 +17,7 @@ using WalletWasabi.Logging;
 using WalletWasabi.WabiSabi.Backend.Models;
 using WalletWasabi.WabiSabi.Client.Banning;
 using WalletWasabi.WabiSabi.Client.CoinJoin.Client;
+using WalletWasabi.WabiSabi.Client.CoinJoin.Manager;
 using WalletWasabi.WabiSabi.Client.CoinJoinProgressEvents;
 using WalletWasabi.WabiSabi.Client.RoundStateAwaiters;
 using WalletWasabi.WabiSabi.Client.StatusChangedEvents;
@@ -64,7 +65,10 @@ public class CoinJoinManager : BackgroundService
 
 	private ImmutableDictionary<WalletId, CoinJoinClientStateHolder> CoinJoinClientStates { get; set; } = ImmutableDictionary<WalletId, CoinJoinClientStateHolder>.Empty;
 
+	private Dictionary<WalletId, WalletCoinJoinClient> WalletCoinJoinClients { get; set; } = new();
+
 	private Channel<CoinJoinCommand> CommandChannel { get; } = Channel.CreateUnbounded<CoinJoinCommand>();
+	private CoinJoinTrackerFactory CoinJoinTrackerFactory { get; set; }
 
 	#region Public API (Start | Stop | TryGetWalletStatus)
 
@@ -95,6 +99,18 @@ public class CoinJoinManager : BackgroundService
 	}
 
 	#endregion Public API (Start | Stop | TryGetWalletStatus)
+
+	public override async Task StartAsync(CancellationToken cancellationToken)
+	{
+		CoinJoinTrackerFactory = new CoinJoinTrackerFactory(HttpClientFactory, RoundStatusUpdater, CoordinatorIdentifier, cancellationToken);
+
+		var wallets = await WalletProvider.GetWalletsAsync().ConfigureAwait(false);
+		WalletCoinJoinClients = wallets.ToDictionary(
+			wallet => wallet.WalletId,
+			wallet => new WalletCoinJoinClient(wallet, CoinJoinTrackerFactory));
+
+		await base.StartAsync(cancellationToken).ConfigureAwait(false);
+	}
 
 	protected override async Task ExecuteAsync(CancellationToken stoppingToken)
 	{
@@ -156,8 +172,6 @@ public class CoinJoinManager : BackgroundService
 
 	private async Task HandleCoinJoinCommandsAsync(ConcurrentDictionary<WalletId, CoinJoinTracker> trackedCoinJoins, ConcurrentDictionary<IWallet, TrackedAutoStart> trackedAutoStarts, CancellationToken stoppingToken)
 	{
-		var coinJoinTrackerFactory = new CoinJoinTrackerFactory(HttpClientFactory, RoundStatusUpdater, CoordinatorIdentifier, stoppingToken);
-
 		async void StartCoinJoinCommand(StartCoinJoinCommand startCommand)
 		{
 			var walletToStart = startCommand.Wallet;
@@ -225,7 +239,15 @@ public class CoinJoinManager : BackgroundService
 				return coinCandidates;
 			}
 
-			var coinJoinTracker = await coinJoinTrackerFactory.CreateAndStartAsync(walletToStart, startCommand.OutputWallet, SanityChecksAndGetCoinCandidatesFunc, startCommand.StopWhenAllMixed, startCommand.OverridePlebStop).ConfigureAwait(false);
+			if (!WalletCoinJoinClients.TryGetValue(walletToStart.WalletId, out var walletCoinJoinClient))
+			{
+				walletCoinJoinClient = new WalletCoinJoinClient(walletToStart, CoinJoinTrackerFactory);
+
+				// The wallet was added after startup.
+				WalletCoinJoinClients.Add(walletToStart.WalletId, walletCoinJoinClient);
+			}
+
+			var coinJoinTracker = await walletCoinJoinClient.CreateAndStartAsync(startCommand.OutputWallet, SanityChecksAndGetCoinCandidatesFunc, startCommand.StopWhenAllMixed, startCommand.OverridePlebStop).ConfigureAwait(false);
 
 			if (!trackedCoinJoins.TryAdd(walletToStart.WalletId, coinJoinTracker))
 			{
