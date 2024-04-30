@@ -109,6 +109,11 @@ public class CoinJoinManager : BackgroundService
 			wallet => wallet.WalletId,
 			wallet => new WalletCoinJoinClient(wallet, CoinJoinTrackerFactory));
 
+		foreach (var walletCoinJoinClient in WalletCoinJoinClients.Values)
+		{
+			walletCoinJoinClient.CoinJoinProgressChanged += CoinJoinTracker_WalletCoinJoinProgressChanged;
+		}
+
 		await base.StartAsync(cancellationToken).ConfigureAwait(false);
 	}
 
@@ -242,8 +247,9 @@ public class CoinJoinManager : BackgroundService
 			if (!WalletCoinJoinClients.TryGetValue(walletToStart.WalletId, out var walletCoinJoinClient))
 			{
 				walletCoinJoinClient = new WalletCoinJoinClient(walletToStart, CoinJoinTrackerFactory);
+				walletCoinJoinClient.CoinJoinProgressChanged += CoinJoinTracker_WalletCoinJoinProgressChanged;
 
-				// The wallet was added after startup.
+				// The wallet was added after startup. Creating WalletCoinJoinClient.
 				WalletCoinJoinClients.Add(walletToStart.WalletId, walletCoinJoinClient);
 			}
 
@@ -257,8 +263,6 @@ public class CoinJoinManager : BackgroundService
 				coinJoinTracker.Dispose();
 				return;
 			}
-
-			coinJoinTracker.WalletCoinJoinProgressChanged += CoinJoinTracker_WalletCoinJoinProgressChanged;
 
 			var registrationTimeout = TimeSpan.MaxValue;
 			NotifyCoinJoinStarted(walletToStart, registrationTimeout);
@@ -810,6 +814,16 @@ public class CoinJoinManager : BackgroundService
 		}
 
 		NotifyCoinJoinStatusChanged(wallet, e);
+	}
+
+	public override void Dispose()
+	{
+		foreach (var walletCoinJoinClient in WalletCoinJoinClients.Values)
+		{
+			walletCoinJoinClient.CoinJoinProgressChanged -= CoinJoinTracker_WalletCoinJoinProgressChanged;
+		}
+
+		base.Dispose();
 	}
 
 	private record CoinJoinCommand(IWallet Wallet);
