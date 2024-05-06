@@ -97,6 +97,7 @@ public class Wallet : BackgroundService, IWallet
 	public WasabiSynchronizer Synchronizer { get; }
 	public ServiceConfiguration ServiceConfiguration { get; }
 	public string WalletName => KeyManager.WalletName;
+	public bool IsAutoCoinJoin => KeyManager.AutoCoinJoin;
 
 	public CoinsRegistry Coins { get; }
 

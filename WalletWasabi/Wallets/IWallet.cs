@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using WalletWasabi.Blockchain.Keys;
 using WalletWasabi.Blockchain.TransactionOutputs;
 using WalletWasabi.Blockchain.Transactions;
 using WalletWasabi.Models;
@@ -14,6 +15,7 @@ public interface IWallet
 	WalletId WalletId { get; }
 	bool IsUnderPlebStop { get; }
 	bool IsMixable { get; }
+	bool IsAutoCoinJoin { get; }
 
 	/// <summary>
 	/// Watch only wallets have no key chains.
