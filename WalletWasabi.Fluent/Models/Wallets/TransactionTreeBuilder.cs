@@ -216,7 +216,7 @@ public class TransactionTreeBuilder
 		var dates = children.Select(tx => tx.Date).ToImmutableArray();
 		var firstDate = dates.Min().ToLocalTime();
 		var lastDate = dates.Max().ToLocalTime();
-		if (firstDate.Day == lastDate.Day)
+		if (firstDate.Date == lastDate.Date)
 		{
 			foreach (var child in children)
 			{
@@ -261,7 +261,7 @@ public class TransactionTreeBuilder
 
 		coinjoinGroup.DateString = lastDate.ToUserFacingFriendlyString();
 
-		if (firstDate.Day == lastDate.Day)
+		if (firstDate.Date == lastDate.Date)
 		{
 			coinjoinGroup.DateToolTipString = $"{firstDate.ToUserFacingString(withTime: false)}";
 
