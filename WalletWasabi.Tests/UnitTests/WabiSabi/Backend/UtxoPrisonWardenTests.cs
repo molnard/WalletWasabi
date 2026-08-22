@@ -49,8 +49,6 @@ public class UtxoPrisonWardenTests
 			w.Prison.DoubleSpent(i4, Money.Coins(0.1m), uint256.One);
 			w.Prison.CheatingDetected(i5, uint256.One);
 
-			// Wait until serializes.
-			await Task.Delay(1000);
 			await w.StopAsync(CancellationToken.None);
 		}
 
