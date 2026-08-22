@@ -251,14 +251,18 @@ public static class ReleaseDownloader
 	}
 
 	private static string GetInstallerName(Version version) =>
-		(PlatformInformation.GetOsPlatform(), RuntimeInformation.ProcessArchitecture) switch
+		GetInstallerName(version, PlatformInformation.GetOsPlatform(), RuntimeInformation.ProcessArchitecture, PlatformInformation.IsDebianBasedOS());
+
+	internal static string GetInstallerName(Version version, OS osPlatform, Architecture architecture, bool isDebianBasedOS) =>
+		(osPlatform, architecture) switch
 		{
 			(OS.Windows, _) => $"Wasabi-{version}.msi",
 			(OS.OSX, Architecture.Arm64) => $"Wasabi-{version}-arm64.dmg",
 			(OS.OSX, _) => $"Wasabi-{version}.dmg",
-			(OS.Linux, _) when PlatformInformation.IsDebianBasedOS() => $"Wasabi-{version}.deb",
+			(OS.Linux, Architecture.Arm64) when isDebianBasedOS => $"Wasabi-{version}-arm64.deb",
+			(OS.Linux, _) when isDebianBasedOS => $"Wasabi-{version}.deb",
 			(OS.Linux, Architecture.X64) => $"Wasabi-{version}-linux-x64.tar.gz",
-			_ => throw new NotSupportedException($"Unsupported platform: '{RuntimeInformation.OSDescription}'.")
+			_ => throw new NotSupportedException($"Unsupported platform: '{osPlatform}' on '{architecture}'.")
 		};
 
 }
