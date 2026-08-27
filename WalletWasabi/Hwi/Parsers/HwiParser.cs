@@ -226,8 +226,7 @@ public static class HwiParser
 
 	private static HwiEnumerateEntry ParseHwiEnumerateEntry(JsonNode json)
 	{
-        var modelToken = json["model"]
-            ?? throw new ArgumentNullException($"'modelToken' can't be null;");
+		var modelToken = json["model"] ?? json["type"];
 
         var pathString = json["path"]?.GetValue<string>()?.Trim()
             ?? throw new ArgumentNullException($"Path can't be null;");
