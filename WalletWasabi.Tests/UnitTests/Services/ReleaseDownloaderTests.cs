@@ -1,8 +1,14 @@
+using System;
 using System.Collections.Immutable;
 using System.IO;
+using System.Net;
+using System.Net.Http;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using WalletWasabi.Helpers;
 using WalletWasabi.Services;
+using WalletWasabi.Tests.Helpers;
 using WalletWasabi.Tests.UnitTests.Mocks;
 using WalletWasabi.WebClients;
 using Xunit;
@@ -11,6 +17,44 @@ namespace WalletWasabi.Tests.UnitTests.Services;
 
 public class ReleaseDownloaderTests
 {
+	[Fact]
+	public async Task InterruptedDownloadDoesNotReplaceExistingFileAsync()
+	{
+		var workDir = Common.GetWorkDir();
+		await IoHelpers.TryDeleteDirectoryAsync(workDir);
+		Directory.CreateDirectory(workDir);
+		var filePath = Path.Combine(workDir, "installer.bin");
+		await File.WriteAllTextAsync(filePath, "existing installer");
+		var uri = new Uri("https://myserver.com/installer.bin");
+
+		try
+		{
+			using var failingClient = new MockHttpClient
+			{
+				OnSendAsync = _ => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+				{
+					Content = new StreamContent(new ThrowAfterFirstReadStream(Encoding.UTF8.GetBytes("partial installer")))
+				})
+			};
+			var failingFactory = new MockHttpClientFactory { OnCreateClient = _ => failingClient };
+
+			await Assert.ThrowsAsync<IOException>(() => ReleaseDownloader.DownloadAsync(failingFactory, uri, filePath, CancellationToken.None));
+
+			Assert.Equal("existing installer", await File.ReadAllTextAsync(filePath));
+			Assert.Empty(Directory.EnumerateFiles(workDir, "*.part"));
+
+			var successfulFactory = MockHttpClientFactory.Create(() => HttpResponseMessageEx.Ok("complete installer"));
+			await ReleaseDownloader.DownloadAsync(successfulFactory, uri, filePath, CancellationToken.None);
+
+			Assert.Equal("complete installer", await File.ReadAllTextAsync(filePath));
+			Assert.Empty(Directory.EnumerateFiles(workDir, "*.part"));
+		}
+		finally
+		{
+			await IoHelpers.TryDeleteDirectoryAsync(workDir);
+		}
+	}
+
 	[Fact]
 	public async Task OfficiallySupportedOSesAsync()
 	{
@@ -82,5 +126,21 @@ public class ReleaseDownloaderTests
 			""";
 		var sha256SumsWasabiSig = "MEQCICRVReWPrPldOxcDdD4k9k32zFRtzd17eEJRgGwvLgVpAiBnn8lu1IZQpNP1PcO6wIHf9nmXgTw8LRUdfCaZgKtuSg==";
 		return (sha256sums, sha256sumsAsc, sha256SumsWasabiSig);
+	}
+
+	private sealed class ThrowAfterFirstReadStream(byte[] buffer) : MemoryStream(buffer)
+	{
+		private bool _hasRead;
+
+		public override ValueTask<int> ReadAsync(Memory<byte> destination, CancellationToken cancellationToken = default)
+		{
+			if (_hasRead)
+			{
+				return ValueTask.FromException<int>(new IOException("The download was interrupted."));
+			}
+
+			_hasRead = true;
+			return base.ReadAsync(destination, cancellationToken);
+		}
 	}
 }

@@ -174,9 +174,7 @@ public static class ReleaseDownloader
 		Task<string> DownloadFileAsync(Uri uri)
 		{
 			var filePath = Path.Combine(installDirectory.FullName, uri.Segments[^1]);
-			return File.Exists(filePath)
-				? Task.FromResult(filePath)
-				: DownloadAsync(httpClientFactory, uri, filePath, cancellationToken);
+			return DownloadAsync(httpClientFactory, uri, filePath, cancellationToken);
 		}
 
 		Result<Uri, string> GetInstallerUri(string filename) =>
@@ -203,18 +201,31 @@ public static class ReleaseDownloader
 		return installDirectory;
 	}
 
-	private static async Task<string> DownloadAsync(IHttpClientFactory httpClientFactory, Uri uri, string filePath, CancellationToken cancellationToken)
+	internal static async Task<string> DownloadAsync(IHttpClientFactory httpClientFactory, Uri uri, string filePath, CancellationToken cancellationToken)
 	{
-		File.Delete(filePath);
+		var partialFilePath = $"{filePath}.{Guid.NewGuid():N}.part";
 		var httpClient = httpClientFactory.CreateClient($"{uri.Host}-installers");
 		httpClient.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", UserAgentGetter());
 		using var request = new HttpRequestMessage(HttpMethod.Get, uri);
-		var response = await httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
-		response.EnsureSuccessStatusCode();
-		var contentStream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-		using var fileStream = new FileStream(filePath, FileMode.Create);
-		await contentStream.CopyToAsync(fileStream, cancellationToken).ConfigureAwait(false);
-		return filePath;
+
+		try
+		{
+			using var response = await httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
+			response.EnsureSuccessStatusCode();
+			using var contentStream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+			using (var fileStream = new FileStream(partialFilePath, FileMode.CreateNew, FileAccess.Write, FileShare.None, bufferSize: 81920, useAsync: true))
+			{
+				await contentStream.CopyToAsync(fileStream, cancellationToken).ConfigureAwait(false);
+				await fileStream.FlushAsync(cancellationToken).ConfigureAwait(false);
+			}
+
+			File.Move(partialFilePath, filePath, overwrite: true);
+			return filePath;
+		}
+		finally
+		{
+			File.Delete(partialFilePath);
+		}
 	}
 
 	private static async Task VerifySha256SumsFileAsync(string sha256SumsAscFilePath, string wasabiSignatureFilePath,
