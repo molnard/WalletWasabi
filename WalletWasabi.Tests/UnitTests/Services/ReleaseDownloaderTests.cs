@@ -1,7 +1,9 @@
 using System.Collections.Immutable;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
+using WalletWasabi.Helpers;
 using WalletWasabi.Services;
 using WalletWasabi.Tests.UnitTests.Mocks;
 using WalletWasabi.WebClients;
@@ -11,6 +13,20 @@ namespace WalletWasabi.Tests.UnitTests.Services;
 
 public class ReleaseDownloaderTests
 {
+	[Theory]
+	[InlineData(OS.Windows, Architecture.X64, false, "Wasabi-2.5.1.msi")]
+	[InlineData(OS.OSX, Architecture.X64, false, "Wasabi-2.5.1.dmg")]
+	[InlineData(OS.OSX, Architecture.Arm64, false, "Wasabi-2.5.1-arm64.dmg")]
+	[InlineData(OS.Linux, Architecture.X64, true, "Wasabi-2.5.1.deb")]
+	[InlineData(OS.Linux, Architecture.Arm64, true, "Wasabi-2.5.1-arm64.deb")]
+	[InlineData(OS.Linux, Architecture.X64, false, "Wasabi-2.5.1-linux-x64.tar.gz")]
+	public void SelectsInstallerForPlatform(OS osPlatform, Architecture architecture, bool isDebianBasedOS, string expected)
+	{
+		var installerName = ReleaseDownloader.GetInstallerName(Version.Parse("2.5.1"), osPlatform, architecture, isDebianBasedOS);
+
+		Assert.Equal(expected, installerName);
+	}
+
 	[Fact]
 	public async Task OfficiallySupportedOSesAsync()
 	{
