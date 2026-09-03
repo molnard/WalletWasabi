@@ -143,6 +143,41 @@ public class CpfpInfoUpdaterTests
 	}
 
 	[Fact]
+	public async Task GetInfoForTransaction_SharesConcurrentRequestForSameTransactionAsync()
+	{
+		var cpfpJson = """{"effectiveFeePerVsize": 10.5, "fee": 1.0, "adjustedVsize": 100, "ancestors": []}""";
+		var requestStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+		var response = new TaskCompletionSource<HttpResponseMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
+		var callCount = 0;
+
+		using var mockHttpClient = new MockHttpClient();
+		mockHttpClient.OnSendAsync = _ =>
+		{
+			Interlocked.Increment(ref callCount);
+			requestStarted.TrySetResult();
+			return response.Task;
+		};
+
+		var httpClientFactory = new MockHttpClientFactory { OnCreateClient = _ => mockHttpClient };
+		var handler = CpfpInfoUpdater.Create(httpClientFactory, Network.Main, new EventBus());
+		var tx = BitcoinFactory.CreateSmartTransaction(height: Height.Mempool);
+		var replyChannel1 = new TestReplyChannel<Result<CpfpInfo, string>>();
+		var replyChannel2 = new TestReplyChannel<Result<CpfpInfo, string>>();
+
+		var request1 = handler(new CpfpInfoMessage.GetInfoForTransaction(tx, replyChannel1), Unit.Instance, CancellationToken.None);
+		await requestStarted.Task;
+		var request2 = handler(new CpfpInfoMessage.GetInfoForTransaction(tx, replyChannel2), Unit.Instance, CancellationToken.None);
+
+		using var httpResponse = HttpResponseMessageEx.Ok(cpfpJson);
+		response.SetResult(httpResponse);
+		await Task.WhenAll(request1, request2);
+
+		Assert.Equal(1, callCount);
+		Assert.True(replyChannel1.Result!.IsOk);
+		Assert.True(replyChannel2.Result!.IsOk);
+	}
+
+	[Fact]
 	public async Task PreFetchInfoForTransaction_SchedulesTask_WithoutBlockingAsync()
 	{
 		// Arrange
