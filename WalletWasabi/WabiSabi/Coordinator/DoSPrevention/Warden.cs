@@ -20,6 +20,7 @@ public class Warden : BackgroundService
 	private readonly string _prisonFilePath;
 
 	private readonly Channel<Offender> _offendersToSaveChannel;
+	private readonly TaskCompletionSource _started = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
 	private static Prison DeserializePrison(string prisonFilePath, ChannelWriter<Offender> channelWriter)
 	{
@@ -47,19 +48,15 @@ public class Warden : BackgroundService
 
 	protected override async Task ExecuteAsync(CancellationToken cancellationToken)
 	{
+		_started.TrySetResult();
+		using var registration = cancellationToken.Register(() => _offendersToSaveChannel.Writer.TryComplete());
+
 		try
 		{
-			while (!cancellationToken.IsCancellationRequested)
+			await foreach (var inmate in _offendersToSaveChannel.Reader.ReadAllAsync(CancellationToken.None).ConfigureAwait(false))
 			{
-				await foreach (var inmate in _offendersToSaveChannel.Reader.ReadAllAsync(cancellationToken).ConfigureAwait(false))
-				{
-					await File.AppendAllLinesAsync(_prisonFilePath, [inmate.ToStringLine()], CancellationToken.None).ConfigureAwait(false);
-				}
+				await File.AppendAllLinesAsync(_prisonFilePath, [inmate.ToStringLine()], CancellationToken.None).ConfigureAwait(false);
 			}
-		}
-		catch (OperationCanceledException)
-		{
-			Logger.LogInfo("Warden was requested to stop.");
 		}
 		catch (Exception ex)
 		{
@@ -68,9 +65,15 @@ public class Warden : BackgroundService
 		}
 	}
 
+	public override async Task StartAsync(CancellationToken cancellationToken)
+	{
+		await base.StartAsync(cancellationToken).ConfigureAwait(false);
+		await _started.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+	}
+
 	public override Task StopAsync(CancellationToken cancellationToken)
 	{
-		_offendersToSaveChannel.Writer.Complete();
+		_offendersToSaveChannel.Writer.TryComplete();
 		return base.StopAsync(cancellationToken);
 	}
 }
