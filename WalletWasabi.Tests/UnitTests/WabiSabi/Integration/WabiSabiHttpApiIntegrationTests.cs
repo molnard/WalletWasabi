@@ -23,6 +23,8 @@ using WalletWasabi.WabiSabi.Coordinator.Models;
 using WalletWasabi.WabiSabi.Coordinator.Rounds;
 using WalletWasabi.WabiSabi.Coordinator.Statistics;
 using WalletWasabi.Tests.UnitTests.Mocks;
+using WalletWasabi.Coordinator.WabiSabi;
+using WalletWasabi.FeeRateEstimation;
 
 namespace WalletWasabi.Tests.UnitTests.WabiSabi.Integration;
 
@@ -411,6 +413,7 @@ public class WabiSabiHttpApiIntegrationTests : IClassFixture<WabiSabiApiApplicat
 
 			return tx.GetHash();
 		};
+		var feeEstimations = await FeeRateProviders.RpcAsync(rpc)(cts.Token);
 		var coordinatorApp = _apiApplicationFactory.WithWebHostBuilder(builder =>
 			builder.ConfigureServices(services =>
 			{
@@ -426,7 +429,18 @@ public class WabiSabiHttpApiIntegrationTests : IClassFixture<WabiSabiApiApplicat
 					ConnectionConfirmationTimeout = TimeSpan.FromSeconds(2 * ExpectedInputNumber),
 					OutputRegistrationTimeout = TimeSpan.FromSeconds(5 * ExpectedInputNumber),
 					TransactionSigningTimeout = TimeSpan.FromSeconds(3 * ExpectedInputNumber),
-					MaxSuggestedAmountBase = Money.Satoshis(ProtocolConstants.MaxAmountPerAlice)
+					MaxSuggestedAmountBase = Money.Satoshis(ProtocolConstants.MaxAmountPerAlice),
+					// Seed one round below: short test rounds never meet Arena's one-minute availability threshold.
+					RoundParallelization = 0
+				});
+				services.AddSingleton(s =>
+				{
+					var config = s.GetRequiredService<WabiSabiConfig>();
+					var arena = ActivatorUtilities.CreateInstance<Arena>(s);
+					var feeRate = feeEstimations.GetFeeRate((int)config.ConfirmationTarget);
+					var roundParametersFactory = s.GetRequiredService<RoundParametersFactory>();
+					arena.Rounds.Add(WabiSabiFactory.CreateRound(roundParametersFactory(feeRate, config.MaxRegistrableAmount)));
+					return arena;
 				});
 			}));
 
@@ -468,11 +482,16 @@ public class WabiSabiHttpApiIntegrationTests : IClassFixture<WabiSabiApiApplicat
 		}
 		await dummyWallet.GenerateAsync(101, cts.Token);
 
-		var tasks = participants.Select(x => x.StartParticipatingAsync(cts.Token)).ToArray();
+		using var participantCts = CancellationTokenSource.CreateLinkedTokenSource(cts.Token);
+		var tasks = participants.Select(x => x.StartParticipatingAsync(participantCts.Token)).ToArray();
 
 		var coinjoinTransactionCompletionTask = coinJoinBroadcasted.Task.WaitAsync(cts.Token);
-		var participantsFinishedTask = Task.WhenAll(tasks);
+		Task participantsFinishedTask = Task.WhenAll(tasks);
 		var finishedTask = await Task.WhenAny(participantsFinishedTask, coinjoinTransactionCompletionTask);
+
+		// Stop remaining clients; the assertions below determine the test outcome.
+		await participantCts.CancelAsync();
+		await participantsFinishedTask.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing | ConfigureAwaitOptions.ContinueOnCapturedContext);
 
 		if (finishedTask == coinjoinTransactionCompletionTask)
 		{
