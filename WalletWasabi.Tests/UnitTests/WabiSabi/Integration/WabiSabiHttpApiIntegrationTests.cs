@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Collections.Immutable;
 using Microsoft.Extensions.DependencyInjection;
 using NBitcoin;
@@ -12,6 +13,7 @@ using WalletWasabi.Blockchain.Keys;
 using WalletWasabi.Tests.Helpers;
 using WalletWasabi.WabiSabi.Client;
 using WalletWasabi.WabiSabi.Client.CoinJoin.Client;
+using WalletWasabi.WabiSabi.Client.CoinJoinProgressEvents;
 using WalletWasabi.WabiSabi.Client.RoundStateAwaiters;
 using WalletWasabi.WabiSabi.Models;
 using WalletWasabi.WabiSabi.Models.MultipartyTransaction;
@@ -330,8 +332,6 @@ public class WabiSabiHttpApiIntegrationTests : IClassFixture<WabiSabiApiApplicat
 		using var roundStateUpdater = RoundStateUpdaterForTesting.Create(apiClient, cts.Token);
 		var roundStateProvider = new RoundStateProvider(roundStateUpdater);
 
-		var roundState = await roundStateProvider.CreateRoundAwaiterAsync(roundState => roundState.Phase == Phase.InputRegistration, cts.Token);
-
 		var httpClient = coordinatorApp.CreateClient();
 
 		// Creates a mocked HttpClient that says everything is okay when a signature is sent but it doesn't really send it.
@@ -352,8 +352,23 @@ public class WabiSabiHttpApiIntegrationTests : IClassFixture<WabiSabiApiApplicat
 
 		var coinJoinClient = WabiSabiFactory.CreateTestCoinJoinClient(_ => apiClient, keyManager1, roundStateProvider);
 		var badCoinJoinClient = WabiSabiFactory.CreateTestCoinJoinClient(_ => nonSigningApiClient, keyManager2, roundStateProvider);
+		var initialRound = new TaskCompletionSource<RoundState>(TaskCreationOptions.RunContinuationsAsynchronously);
+		var completedRounds = new ConcurrentQueue<RoundState>();
+		coinJoinClient.CoinJoinClientProgress += (_, progress) =>
+		{
+			if (progress is EnteringInputRegistrationPhase entering)
+			{
+				initialRound.TrySetResult(entering.RoundState);
+			}
+			else if (progress is RoundEnded ended)
+			{
+				completedRounds.Enqueue(ended.LastRoundState);
+			}
+		};
 
 		var coinJoinTask = coinJoinClient.StartCoinJoinAsync(() => coins, cts.Token);
+		// Both clients must join the same round to exercise the blame-round fallback.
+		var roundState = await initialRound.Task.WaitAsync(cts.Token);
 		var badCoinsTask = badCoinJoinClient.StartRoundAsync(badCoins, roundState, cts.Token);
 
 		// BadCoinsTask will throw.
@@ -375,6 +390,9 @@ public class WabiSabiHttpApiIntegrationTests : IClassFixture<WabiSabiApiApplicat
 		// Its local result can be disrupted or failed, but it must never succeed.
 		Assert.IsNotType<SuccessfulCoinJoinResult>(resultBad);
 		Assert.IsType<SuccessfulCoinJoinResult>(resultOk);
+		Assert.Collection(completedRounds,
+			initial => Assert.Equal(roundState.Id, initial.Id),
+			blame => Assert.Equal(roundState.Id, blame.BlameOf));
 
 		var broadcastedTx = await broadcastedTxTcs.Task; // wait for the transaction to be broadcasted.
 		Assert.NotNull(broadcastedTx);
