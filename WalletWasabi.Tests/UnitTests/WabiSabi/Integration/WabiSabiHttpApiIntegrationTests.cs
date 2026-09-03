@@ -44,9 +44,7 @@ public class WabiSabiHttpApiIntegrationTests : IClassFixture<WabiSabiApiApplicat
 	{
 		var httpClient = _apiApplicationFactory.CreateClient();
 		await Task.Delay(100);
-		var apiClient = await _apiApplicationFactory.CreateArenaClientAsync(httpClient);
-		var rounds = (await apiClient.GetStatusAsync(RoundStateRequest.Empty, CancellationToken.None)).RoundStates;
-		var round = rounds.First(x => x.CoinjoinState is ConstructionState);
+		var (apiClient, round) = await _apiApplicationFactory.CreateArenaClientAsync(httpClient);
 
 		// If an output is not in the utxo dataset then it is not unspent, this
 		// means that the output is spent or simply doesn't even exist.
@@ -91,9 +89,7 @@ public class WabiSabiHttpApiIntegrationTests : IClassFixture<WabiSabiApiApplicat
 			})).CreateClient();
 
 		await Task.Delay(100);
-		var apiClient = await _apiApplicationFactory.CreateArenaClientAsync(httpClient);
-		var rounds = (await apiClient.GetStatusAsync(RoundStateRequest.Empty, timeoutCts.Token)).RoundStates;
-		var round = rounds.First(x => x.CoinjoinState is ConstructionState);
+		var (apiClient, round) = await _apiApplicationFactory.CreateArenaClientAsync(httpClient);
 
 		// If an output is not in the utxo dataset then it is not unspent, this
 		// means that the output is spent or simply doesn't even exist.
@@ -547,9 +543,7 @@ public class WabiSabiHttpApiIntegrationTests : IClassFixture<WabiSabiApiApplicat
 				services.AddSingleton<IRPCClient>(s => rpc);
 			})).CreateClient();
 
-		var apiClient = await _apiApplicationFactory.CreateArenaClientAsync(httpClient);
-		var rounds = (await apiClient.GetStatusAsync(RoundStateRequest.Empty, CancellationToken.None)).RoundStates;
-		var round = rounds.First(x => x.CoinjoinState is ConstructionState);
+		var (apiClient, round) = await _apiApplicationFactory.CreateArenaClientAsync(httpClient);
 		using var stutteredHttpClient = new StuttererHttpClient(httpClient);
 		var stutteredApiClient = new ArenaClient(
 			apiClient.AmountCredentialClient,
@@ -560,6 +554,7 @@ public class WabiSabiHttpApiIntegrationTests : IClassFixture<WabiSabiApiApplicat
 		var ownershipProof = WabiSabiFactory.CreateOwnershipProof(signingKey, round.Id);
 		var response = await stutteredApiClient.RegisterInputAsync(round.Id, coinToRegister.Outpoint, ownershipProof, CancellationToken.None);
 
+		Assert.Equal(2, stutteredHttpClient.RequestsSent);
 		Assert.NotEqual(Guid.Empty, response.Value);
 	}
 
