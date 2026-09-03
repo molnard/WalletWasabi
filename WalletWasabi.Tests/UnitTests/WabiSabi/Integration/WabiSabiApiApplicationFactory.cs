@@ -73,10 +73,10 @@ public class WabiSabiApiApplicationFactory<TStartup> : WebApplicationFactory<TSt
 		builder.ConfigureLogging(o => o.SetMinimumLevel(LogLevel.Warning));
 	}
 
-	public Task<ArenaClient> CreateArenaClientAsync(HttpClient httpClient) =>
+	public Task<(ArenaClient Client, RoundState Round)> CreateArenaClientAsync(HttpClient httpClient) =>
 		CreateArenaClientAsync(CreateWabiSabiHttpApiClient(httpClient));
 
-	public async Task<ArenaClient> CreateArenaClientAsync(WabiSabiHttpApiClient wabiSabiHttpApiClient)
+	public async Task<(ArenaClient Client, RoundState Round)> CreateArenaClientAsync(WabiSabiHttpApiClient wabiSabiHttpApiClient)
 	{
 		using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(30));
 		RoundState? round;
@@ -96,7 +96,7 @@ public class WabiSabiApiApplicationFactory<TStartup> : WebApplicationFactory<TSt
 			round.CreateVsizeCredentialClient(InsecureRandom.Instance),
 			round.CoinjoinState.Parameters.CoordinationIdentifier,
 			wabiSabiHttpApiClient);
-		return arenaClient;
+		return (arenaClient, round);
 	}
 
 	public WabiSabiHttpApiClient CreateWabiSabiHttpApiClient(HttpClient httpClient) =>
