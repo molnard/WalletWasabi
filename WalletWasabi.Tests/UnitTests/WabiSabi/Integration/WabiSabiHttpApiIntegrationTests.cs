@@ -28,16 +28,17 @@ namespace WalletWasabi.Tests.UnitTests.WabiSabi.Integration;
 
 /// <seealso cref="XunitConfiguration.SerialCollectionDefinition"/>
 [Collection("Serial unit tests collection")]
-public class WabiSabiHttpApiIntegrationTests : IClassFixture<WabiSabiApiApplicationFactory<Startup>>
+public class WabiSabiHttpApiIntegrationTests : IAsyncDisposable
 {
-	private readonly WabiSabiApiApplicationFactory<Startup> _apiApplicationFactory;
+	private readonly WabiSabiApiApplicationFactory<Startup> _apiApplicationFactory = new();
 	private readonly ITestOutputHelper _output;
 
-	public WabiSabiHttpApiIntegrationTests(WabiSabiApiApplicationFactory<Startup> apiApplicationFactory, ITestOutputHelper output)
+	public WabiSabiHttpApiIntegrationTests(ITestOutputHelper output)
 	{
-		_apiApplicationFactory = apiApplicationFactory;
 		_output = output;
 	}
+
+	public ValueTask DisposeAsync() => _apiApplicationFactory.DisposeAsync();
 
 	[Fact]
 	public async Task RegisterSpentOrInNonExistentCoinAsync()
