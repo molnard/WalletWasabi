@@ -158,13 +158,7 @@ namespace Wasabi.Release
 
 		private static void ClearStorageTimes(IStorage storage)
 		{
-			foreach (STATSTG entry in GetElements(storage))
-			{
-				if (entry.type == 1)
-				{
-					VisitStorage(storage, entry.pwcsName, WriteStorage, ClearStorageTimes);
-				}
-			}
+			ClearChildStorageTimes(storage);
 			// The compound container also records the wall-clock build time.
 			// Let Windows handle its FAT/DIFAT layout instead of patching bytes.
 			long zero = 0;
@@ -172,10 +166,28 @@ namespace Wasabi.Release
 			storage.Commit(0);
 		}
 
+		private static void ClearChildStorageTimes(IStorage storage)
+		{
+			foreach (STATSTG entry in GetElements(storage))
+			{
+				if (entry.type == 1)
+				{
+					VisitStorage(storage, entry.pwcsName, WriteStorage, ClearChildStorageTimes);
+					// Only the root accepts a null name. A substorage's times must
+					// be set through its parent after the substorage is committed.
+					long zero = 0;
+					storage.SetElementTimes(entry.pwcsName, ref zero, IntPtr.Zero, ref zero);
+				}
+			}
+			storage.Commit(0);
+		}
+
 		private static void VisitStorage(IStorage parent, string name, uint mode, Action<IStorage> action)
 		{
 			IStorage child;
-			parent.OpenStorage(name, null, mode, IntPtr.Zero, 0, out child);
+			// Substorages require STGM_SHARE_EXCLUSIVE even for read access.
+			uint childMode = (mode & 3) | 0x10;
+			parent.OpenStorage(name, null, childMode, IntPtr.Zero, 0, out child);
 			try
 			{
 				action(child);

@@ -38,17 +38,18 @@ function Read-Msi([string] $Path) {
     }
 }
 
-function Change-Database([string] $Path, [bool] $AddSignature) {
+function Change-Database([string] $Path, [string] $Mode, [string] $EntryFile = '') {
     $installer = New-Object -ComObject WindowsInstaller.Installer
     $database = $installer.OpenDatabase($Path, 1)
     $view = $null
     $record = $null
     try {
-        if ($AddSignature) {
-            $view = $database.OpenView('INSERT INTO `_Streams` (`Name`, `Data`) VALUES (?, ?)')
+        if ($Mode -in @('Signature', 'Storage')) {
+            $table = if ($Mode -eq 'Signature') { '_Streams' } else { '_Storages' }
+            $view = $database.OpenView("INSERT INTO ``$table`` (``Name``, ``Data``) VALUES (?, ?)")
             $record = $installer.CreateRecord(2)
-            $record.StringData(1) = [char]5 + 'DigitalSignature'
-            $record.SetStream(2, $signedPayload)
+            $record.StringData(1) = if ($Mode -eq 'Signature') { [char]5 + 'DigitalSignature' } else { 'embedded' }
+            $record.SetStream(2, $EntryFile)
             $view.Execute($record)
         } else {
             $view = $database.OpenView("UPDATE ``Property`` SET ``Value`` = 'changed installer logic' WHERE ``Property`` = 'ARPCOMMENTS'")
@@ -112,17 +113,25 @@ $changed = Build-Fixture 'changed-payload' 'different payload'
 Assert ((Read-Msi $changed).Code -ne $aInfo.Code) 'A payload change reused PackageCode.'
 $logic = Join-Path $OutputRoot 'changed-logic.msi'
 Copy-Item -LiteralPath $a -Destination $logic
-Change-Database $logic $false
+Change-Database $logic 'Logic'
 & $helper -Mode Finalize -Path $logic -SourceDateEpoch $epoch | Out-Null
 Assert ((Read-Msi $logic).Code -ne $aInfo.Code) 'An installer database change reused PackageCode.'
 
 $signed = Join-Path $OutputRoot 'signature-stream.msi'
 Copy-Item -LiteralPath $a -Destination $signed
 # Presence of the Authenticode stream must reject even an invalid signature.
-Change-Database $signed $true
+Change-Database $signed 'Signature' $signedPayload
 $signedHash = (Get-FileHash -LiteralPath $signed).Hash
 Assert-Rejected { & $helper -Mode Finalize -Path $signed -SourceDateEpoch $epoch } 'An MSI with a publisher signature was modified.' 'Refusing to modify a signed MSI'
 Assert ((Get-FileHash -LiteralPath $signed).Hash -eq $signedHash) 'Signature refusal changed the MSI.'
+$nested = Join-Path $OutputRoot 'nested-storage.msi'
+Copy-Item -LiteralPath $a -Destination $nested
+Change-Database $nested 'Storage' $a
+& $helper -Mode Finalize -Path $nested -SourceDateEpoch $epoch | Out-Null
+$nestedHash = (Get-FileHash -LiteralPath $nested).Hash
+Start-Sleep -Seconds 3
+& $helper -Mode Finalize -Path $nested -SourceDateEpoch $epoch | Out-Null
+Assert ((Get-FileHash -LiteralPath $nested).Hash -eq $nestedHash) 'Substorage timestamps are not deterministic.'
 $malformed = Join-Path $OutputRoot 'malformed.msi'
 [IO.File]::WriteAllText($malformed, 'not a compound file')
 $badHash = (Get-FileHash -LiteralPath $malformed).Hash
@@ -177,4 +186,4 @@ Assert ($LASTEXITCODE -eq 0) 'Cannot extract the cabinet payload.'
 Assert ((Get-FileHash -LiteralPath (Join-Path $extracted 'SignedFile')).Hash -eq $originalPayloadHash) 'MSI finalization modified the embedded signed binary.'
 Assert ((Get-AuthenticodeSignature (Join-Path $extracted 'SignedFile')).Status -eq 'Valid') 'The embedded payload signature no longer validates.'
 
-Write-Output "Passed: byte equality, idempotence, payload/database PackageCode changes, source dates, signed/malformed refusal, epoch bounds, embedded Authenticode. Evidence: $OutputRoot"
+Write-Output "Passed: byte equality, flat/nested storage idempotence, payload/database PackageCode changes, source dates, signed/malformed refusal, epoch bounds, embedded Authenticode. Evidence: $OutputRoot"
