@@ -52,8 +52,10 @@ public class DefaultResponseTests
 	public async Task CanEnumerateAsync(HwiClient client)
 	{
 		using var cts = new CancellationTokenSource(ReasonableRequestTimeout);
-		IEnumerable<HwiEnumerateEntry> enumerate = await client.EnumerateAsync(cts.Token);
-		Assert.Empty(enumerate);
+		var enumerate = (await client.EnumerateAsync(cts.Token)).ToArray();
+
+		// No connected usable device is expected. HWI may still report unusable devices with errors.
+		Assert.DoesNotContain(enumerate, entry => entry.Code is null && entry.Fingerprint is not null);
 	}
 
 	[Theory]
