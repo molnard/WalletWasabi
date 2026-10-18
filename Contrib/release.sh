@@ -69,10 +69,7 @@ sign_windows_file() {
     return 1
   fi
   set -x
-}
 
-verify_windows_file() {
-  local file_path="$1"
   WINDOWS_SIGNED_FILE="$file_path" powershell.exe -NoProfile -Command '
     $ErrorActionPreference = "Stop"
     $signature = Get-AuthenticodeSignature -LiteralPath $env:WINDOWS_SIGNED_FILE
@@ -89,16 +86,12 @@ else
   ZIP="zip -r"
 fi
 
-if [[ "$1" == "wininstaller" || "$1" == "wininstaller-signed" || "$1" == "winbinaries" ]]; then
+if [[ "$1" == "wininstaller" || "$1" == "winbinaries" ]]; then
   # Supported platforms
   PLATFORMS=("win-x64")
   CREATE_WINDOWS_INSTALLER="no"
   if [[ "$1" != "winbinaries" ]]; then
     CREATE_WINDOWS_INSTALLER="yes"
-  fi
-  SIGN_WINDOWS_EXECUTABLES="no"
-  if [[ "$1" == "wininstaller-signed" ]]; then
-    SIGN_WINDOWS_EXECUTABLES="yes"
   fi
   CREATE_DEBIAN_PACKAGE="no"
   RELEASE_NOTE="no"
@@ -550,13 +543,9 @@ WINDOWS_PACKAGE_BUILD_DIR="$BUILD_DIR"/win-x64
 
 mkdir -p "$BUILD_INSTALLER_DIR"
 
-# Opt in to signing the MSI payload after the unsigned portable ZIP is complete.
-if [[ "$SIGN_WINDOWS_EXECUTABLES" == "yes" ]]; then
-  sign_windows_file "$WINDOWS_PACKAGE_BUILD_DIR/${EXECUTABLE_NAME}.exe"
-  verify_windows_file "$WINDOWS_PACKAGE_BUILD_DIR/${EXECUTABLE_NAME}.exe"
-  sign_windows_file "$WINDOWS_PACKAGE_BUILD_DIR/${EXECUTABLE_NAME}d.exe"
-  verify_windows_file "$WINDOWS_PACKAGE_BUILD_DIR/${EXECUTABLE_NAME}d.exe"
-fi
+# Keep the portable ZIP unsigned and sign the MSI payload before WiX harvests it.
+sign_windows_file "$WINDOWS_PACKAGE_BUILD_DIR/${EXECUTABLE_NAME}.exe"
+sign_windows_file "$WINDOWS_PACKAGE_BUILD_DIR/${EXECUTABLE_NAME}d.exe"
 
 "$HEAT_EXE" dir $WINDOWS_PACKAGE_BUILD_DIR \
     -o $WINDOWS_INSTALLER_DIR/ComponentsGenerated.wxs \
@@ -585,9 +574,6 @@ fi
 rm $PACKAGES_DIR/*.wixpdb
 
 sign_windows_file "$PACKAGES_DIR/$PACKAGE_FILE_NAME_PREFIX.msi"
-if [[ "$SIGN_WINDOWS_EXECUTABLES" == "yes" ]]; then
-  verify_windows_file "$PACKAGES_DIR/$PACKAGE_FILE_NAME_PREFIX.msi"
-fi
 fi
 
 #------------------------------------------------------------------------------------#

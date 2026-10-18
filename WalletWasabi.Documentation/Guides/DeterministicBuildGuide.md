@@ -111,9 +111,9 @@ diff -r official built
 
 ### Windows
 
-The `wininstaller` release target produces an unsigned portable `Wasabi-<version>-win-x64.zip` and signs the final MSI. Its installed executables remain unsigned. The MSI file itself cannot match an unsigned rebuild byte for byte. Use the portable ZIP to compare the unsigned files.
+The `wininstaller` release target creates an unsigned portable `Wasabi-<version>-win-x64.zip`, then signs and verifies `wassabee.exe` and `wassabeed.exe` before packaging them into the MSI. It also signs and verifies the final MSI. The signed files cannot match an unsigned rebuild byte for byte; their contents can be compared after accounting for Authenticode metadata.
 
-The `winbinaries` and `wininstaller-signed` targets are available only in release tags that define them. For older releases, follow that tag's guide and original `wininstaller` build procedure.
+The `winbinaries` target is available only in release tags that define it. For older releases, follow that tag's guide and original `wininstaller` build procedure.
 
 On Windows, check out a release tag containing `winbinaries` and select the matching .NET SDK as described above. Install 7-Zip and put `7z.exe` on `PATH`. From a clean checkout, run the following in Git Bash to build the unsigned Windows binaries and ZIP without WiX or Azure signing credentials:
 
@@ -131,9 +131,11 @@ git diff --no-index official-win built-win
 
 The comparison should report no differences. Compare the extracted files, because ZIP metadata such as timestamps can differ. A match verifies the portable ZIP's payload; it does not by itself verify the signed MSI or its installed executables.
 
-The optional `wininstaller-signed` target also signs and verifies `wassabee.exe` and `wassabeed.exe` after creating the portable ZIP, then verifies the final MSI signature. It requires WiX, AzureSignTool and the release signing credentials. The release workflow continues to use `wininstaller`.
+To verify the installed executables, first check the original MSI and both entry-point EXE signatures with the Windows SDK's [SignTool](https://learn.microsoft.com/en-us/windows/win32/seccrypto/signtool), for example `signtool verify /pa /all /v wassabee.exe`. Then compare copies of the extracted MSI payload against the unsigned rebuild. SignTool can remove an embedded signature from a comparison copy with `signtool remove /s wassabee.exe`. Signature removal alone does not guarantee recovery of the original file bytes: the comparison must also account for the PE checksum and signing-related padding, and reject unexplained differences. Keep the original signed files for signature verification.
 
-WalletScrutiny's [Windows verification script v0.2.0](https://walletscrutiny.com/desktop/wasabi/#verificationId=9142e12278e997695238adc4400a58a48fdfa139de423574a6ff481d7edae3c5) runs `wininstaller` with a stand-in signer. Keep that target's signing behavior unchanged: requiring valid signatures would stop its independent builds, and signing the embedded executables would add payload differences its MSI comparator does not normalize. The signed target must remain opt-in until the verifier supports it. See [the Windows MSI reproducibility report](https://github.com/WalletWasabi/WalletWasabi/issues/15171) for the existing MSI metadata differences, which this change does not address.
+For automated content comparison, Microsoft's [PE image digest](https://learn.microsoft.com/en-us/windows/win32/debug/pe-format#certificate-data) excludes Authenticode certificate data and the related header fields. A verifier using [ImageGetDigestStream](https://learn.microsoft.com/en-us/windows/win32/api/imagehlp/nf-imagehlp-imagegetdigeststream) must include all documented content flags and separately account for any bytes outside the digest's coverage. A valid publisher signature by itself does not show that the executable matches an independent rebuild.
+
+WalletScrutiny's [Windows verification script v0.2.0](https://walletscrutiny.com/desktop/wasabi/#verificationId=9142e12278e997695238adc4400a58a48fdfa139de423574a6ff481d7edae3c5) needs updating for this signing flow. It currently runs `wininstaller` for both ZIP and MSI checks with a stand-in signer; mandatory signature verification therefore stops both builds at the first unsigned EXE. ZIP verification can use `winbinaries`. MSI verification needs a separate unsigned packaging build without the release signing and verification steps, then must compare extracted executable contents while accounting for Authenticode metadata and the resulting MSI file-size, hash and cabinet differences. Its current comparator does not normalize embedded PE signatures. The existing random WiX identifiers described in [the Windows MSI reproducibility report](https://github.com/WalletWasabi/WalletWasabi/issues/15171) are a separate issue.
 
 ### macOS
 
