@@ -3,7 +3,7 @@
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
   <!-- Define main product. -->
   <Product
-          Id="*"
+          Id="$(var.ProductCode)"
           Name="!(loc.ProductName)"
           Language="!(loc.Language)"
           Version="$(var.BuildVersion)"

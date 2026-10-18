@@ -58,8 +58,14 @@
       <Output TaskParameter="Assemblies" ItemName="AssemblyVersion" />
     </GetAssemblyIdentity>
     <PropertyGroup>
+      <BuildVersion>%(AssemblyVersion.Version)</BuildVersion>
       <LinkerBaseInputPaths>..\WalletWasabi.Fluent.Desktop\bin\dist\win-x64</LinkerBaseInputPaths>
-      <DefineConstants>BuildVersion=%(AssemblyVersion.Version);BasePath=..\WalletWasabi.Fluent.Desktop\bin\dist\win-x64</DefineConstants>
+    </PropertyGroup>
+    <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\..\Contrib\Get-ProductCode.ps1&quot; -Version &quot;$(BuildVersion)&quot; -Architecture x64" ConsoleToMSBuild="true" StandardOutputImportance="Low">
+      <Output TaskParameter="ConsoleOutput" PropertyName="ProductCode" />
+    </Exec>
+    <PropertyGroup>
+      <DefineConstants>BuildVersion=$(BuildVersion);ProductCode=$(ProductCode);BasePath=..\WalletWasabi.Fluent.Desktop\bin\dist\win-x64;DesktopProjectDir=..\WalletWasabi.Fluent.Desktop</DefineConstants>
     </PropertyGroup>
     <!-- Harvest file components from publish folder. -->
     <!-- See https://github.com/wixtoolset/issues/issues/6636#issuecomment-984886136 for the reason why RunAsSeparateProcess="True" was added. -->

@@ -510,6 +510,9 @@ HEAT_EXE="$WIX_BIN_DIR"/heat
 BUILD_INSTALLER_DIR="$BUILD_DIR/win-installer"
 WINDOWS_PACKAGE_BUILD_DIR="$BUILD_DIR"/win-x64
 
+PRODUCT_CODE=$(powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./Contrib/Get-ProductCode.ps1 -Version "$VERSION" -Architecture x64)
+PRODUCT_CODE=${PRODUCT_CODE//$'\r'/}
+
 mkdir -p "$BUILD_INSTALLER_DIR"
 "$HEAT_EXE" dir $WINDOWS_PACKAGE_BUILD_DIR \
     -o $WINDOWS_INSTALLER_DIR/ComponentsGenerated.wxs \
@@ -523,6 +526,7 @@ mkdir -p "$BUILD_INSTALLER_DIR"
     $WINDOWS_INSTALLER_DIR/*.wxs \
     -arch x64 \
     -dBuildVersion=$VERSION \
+    -dProductCode="$PRODUCT_CODE" \
     -dDesktopProjectDir=$DESKTOP \
 
 # Link the .wixobj file to create the .msi installer
