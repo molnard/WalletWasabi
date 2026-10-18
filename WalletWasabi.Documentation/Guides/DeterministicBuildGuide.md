@@ -111,11 +111,29 @@ diff -r official built
 
 ### Windows
 
-`Wasabi-<version>.msi` is Authenticode-signed after it is built, so the installer file itself cannot match a rebuild. The files it installs can be compared: install it, build the `wininstaller` target on Windows, and diff your `build\win-x64` directory against the installation directory:
+The `wininstaller` release target produces an unsigned portable `Wasabi-<version>-win-x64.zip` and signs the final MSI. Its installed executables remain unsigned. The MSI file itself cannot match an unsigned rebuild byte for byte. Use the portable ZIP to compare the unsigned files.
 
-```sh
-git diff --no-index build\win-x64 "C:\Program Files\WasabiWallet"
+The `winbinaries` and `wininstaller-signed` targets are available only in release tags that define them. For older releases, follow that tag's guide and original `wininstaller` build procedure.
+
+On Windows, check out a release tag containing `winbinaries` and select the matching .NET SDK as described above. Install 7-Zip and put `7z.exe` on `PATH`. From a clean checkout, run the following in Git Bash to build the unsigned Windows binaries and ZIP without WiX or Azure signing credentials:
+
+```bash
+RUNNER_OS=Windows ./Contrib/release.sh winbinaries
 ```
+
+Download the official `Wasabi-<version>-win-x64.zip` and verify its hash against the signed release hash list as described above. Then extract the official and locally built ZIPs into separate directories and compare their contents in PowerShell:
+
+```powershell
+Expand-Archive -LiteralPath "C:\Downloads\Wasabi-<version>-win-x64.zip" -DestinationPath official-win
+Expand-Archive -LiteralPath "packages\Wasabi-<version>-win-x64.zip" -DestinationPath built-win
+git diff --no-index official-win built-win
+```
+
+The comparison should report no differences. Compare the extracted files, because ZIP metadata such as timestamps can differ. A match verifies the portable ZIP's payload; it does not by itself verify the signed MSI or its installed executables.
+
+The optional `wininstaller-signed` target also signs and verifies `wassabee.exe` and `wassabeed.exe` after creating the portable ZIP, then verifies the final MSI signature. It requires WiX, AzureSignTool and the release signing credentials. The release workflow continues to use `wininstaller`.
+
+WalletScrutiny's [Windows verification script v0.2.0](https://walletscrutiny.com/desktop/wasabi/#verificationId=9142e12278e997695238adc4400a58a48fdfa139de423574a6ff481d7edae3c5) runs `wininstaller` with a stand-in signer. Keep that target's signing behavior unchanged: requiring valid signatures would stop its independent builds, and signing the embedded executables would add payload differences its MSI comparator does not normalize. The signed target must remain opt-in until the verifier supports it. See [the Windows MSI reproducibility report](https://github.com/WalletWasabi/WalletWasabi/issues/15171) for the existing MSI metadata differences, which this change does not address.
 
 ### macOS
 
