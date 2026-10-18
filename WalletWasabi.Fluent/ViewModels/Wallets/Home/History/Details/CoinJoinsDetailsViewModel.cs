@@ -6,6 +6,7 @@ using System.Reactive.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using NBitcoin;
+using WalletWasabi.Fluent.Extensions;
 using WalletWasabi.Fluent.Models.Wallets;
 using WalletWasabi.Fluent.ViewModels.Navigation;
 using WalletWasabi.Fluent.ViewModels.Wallets.Coinjoins;
@@ -23,6 +24,8 @@ public partial class CoinJoinsDetailsViewModel : RoutableViewModel
 	[AutoNotify] private uint256? _transactionId;
 	[AutoNotify] private ObservableCollection<uint256>? _transactionIds;
 	[AutoNotify] private int _txCount;
+	[AutoNotify] private TimeSpan? _confirmationTime;
+	[AutoNotify] private bool _isConfirmationTimeVisible;
 
 	public CoinJoinsDetailsViewModel(UiContext uiContext, IWalletModel wallet, CoinJoinTransactionGroupModel transaction) : base(uiContext)
 	{
@@ -52,31 +55,23 @@ public partial class CoinJoinsDetailsViewModel : RoutableViewModel
 
 		SetupCancel(enableCancel: false, enableCancelOnEscape: true, enableCancelOnPressed: true);
 		NextCommand = CancelCommand;
-
-		ConfirmationTime = Task.Run(() => wallet.Transactions.TryEstimateConfirmationTimeAsync(transaction, CancellationToken.None)).Result;
-		IsConfirmationTimeVisible = ConfirmationTime.HasValue && ConfirmationTime != TimeSpan.Zero;
 	}
 
 	public CoinjoinCoinListViewModel InputList { get; }
 	public CoinjoinCoinListViewModel OutputList { get; }
 	public CoinjoinCostsViewModel Costs { get; }
 
-	public TimeSpan? ConfirmationTime { get; set; }
-
-	public bool IsConfirmationTimeVisible { get; set; }
-
 	protected override void OnNavigatedTo(bool isInHistory, CompositeDisposable disposables)
 	{
 		base.OnNavigatedTo(isInHistory, disposables);
 
 		_wallet.Transactions.Cache
-			                .Connect()
-							.Do(_ => Update())
-							.Subscribe()
+							.Connect()
+							.SubscribeAsync(async _ => await UpdateAsync(CancellationToken.None))
 							.DisposeWith(disposables);
 	}
 
-	private void Update()
+	private async Task UpdateAsync(CancellationToken cancellationToken)
 	{
 		if (_wallet.Transactions.TryGetById<CoinJoinTransactionGroupModel>(_transaction.Id, out var transaction))
 		{
@@ -86,6 +81,8 @@ public partial class CoinJoinsDetailsViewModel : RoutableViewModel
 			TransactionId = transaction.Id;
 			TransactionIds = new ObservableCollection<uint256>(transaction.Children.Select(x => x.Id));
 			TxCount = TransactionIds.Count;
+			ConfirmationTime = await _wallet.Transactions.TryEstimateConfirmationTimeAsync(transaction, cancellationToken);
+			IsConfirmationTimeVisible = ConfirmationTime.HasValue && ConfirmationTime != TimeSpan.Zero;
 		}
 	}
 }
