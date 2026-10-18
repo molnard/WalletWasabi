@@ -62,7 +62,7 @@
       <DefineConstants>BuildVersion=%(AssemblyVersion.Version);BasePath=..\WalletWasabi.Fluent.Desktop\bin\dist\win-x64</DefineConstants>
       <InstallerSourceDateEpoch Condition="'$(InstallerSourceDateEpoch)' == ''">$(SOURCE_DATE_EPOCH)</InstallerSourceDateEpoch>
     </PropertyGroup>
-    <Exec Command="git -C &quot;$(MSBuildProjectDirectory)\..&quot; log -1 --format=%ct" ConsoleToMSBuild="true" Condition="'$(InstallerSourceDateEpoch)' == ''">
+    <Exec Command="git -C &quot;$(MSBuildProjectDirectory)\..&quot; log -1 --format=%%ct" ConsoleToMSBuild="true" Condition="'$(InstallerSourceDateEpoch)' == ''">
       <Output TaskParameter="ConsoleOutput" PropertyName="InstallerSourceDateEpoch" />
     </Exec>
     <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\..\Contrib\Utils\WindowsInstallerMetadata.ps1&quot; -Mode Prepare -Path &quot;$(MSBuildProjectDirectory)\..\WalletWasabi.Fluent.Desktop\bin\dist\win-x64&quot; -SourceDateEpoch &quot;$(InstallerSourceDateEpoch)&quot;" />
