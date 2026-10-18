@@ -111,6 +111,14 @@ diff -r official built
 
 ### Windows
 
+MSI packaging uses `SOURCE_DATE_EPOCH` for cabinet file dates and summary creation/save times. It defaults to the latest commit's timestamp. Cabinet dates have two-second precision, so odd seconds are rounded down. The unsigned MSI's compound storage timestamps are cleared, and its PackageCode is derived from all of its contents, with that code temporarily replaced by a fixed sentinel. Payload or installer database changes therefore produce a different PackageCode. Both `release.sh` and the WiX project apply this metadata before signing; the metadata helper refuses to modify an MSI that already contains a publisher signature.
+
+The focused metadata checks require Windows, WiX 3 and 7-Zip:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\Contrib\Tests\WindowsInstallerMetadata.Tests.ps1 -WixBin "$env:WIX\bin"
+```
+
 `Wasabi-<version>.msi` is Authenticode-signed after it is built, so the installer file itself cannot match a rebuild. The files it installs can be compared: install it, build the `wininstaller` target on Windows, and diff your `build\win-x64` directory against the installation directory:
 
 ```sh

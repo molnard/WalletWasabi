@@ -510,6 +510,12 @@ HEAT_EXE="$WIX_BIN_DIR"/heat
 BUILD_INSTALLER_DIR="$BUILD_DIR/win-installer"
 WINDOWS_PACKAGE_BUILD_DIR="$BUILD_DIR"/win-x64
 
+# Cabinet entries and MSI metadata use the source date instead of build time.
+SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$(git log -1 --format=%ct)}"
+powershell.exe -NoProfile -ExecutionPolicy Bypass \
+    -File ./Contrib/Utils/WindowsInstallerMetadata.ps1 \
+    -Mode Prepare -Path "$WINDOWS_PACKAGE_BUILD_DIR" -SourceDateEpoch "$SOURCE_DATE_EPOCH"
+
 mkdir -p "$BUILD_INSTALLER_DIR"
 "$HEAT_EXE" dir $WINDOWS_PACKAGE_BUILD_DIR \
     -o $WINDOWS_INSTALLER_DIR/ComponentsGenerated.wxs \
@@ -533,6 +539,11 @@ mkdir -p "$BUILD_INSTALLER_DIR"
     -ext "$WIX_BIN_DIR/WixUtilExtension.dll" \
     -b $WINDOWS_PACKAGE_BUILD_DIR \
     -out $PACKAGES_DIR/$PACKAGE_FILE_NAME_PREFIX.msi
+
+# Finalize the unsigned package before adding its publisher signature.
+powershell.exe -NoProfile -ExecutionPolicy Bypass \
+    -File ./Contrib/Utils/WindowsInstallerMetadata.ps1 \
+    -Mode Finalize -Path "$PACKAGES_DIR/$PACKAGE_FILE_NAME_PREFIX.msi" -SourceDateEpoch "$SOURCE_DATE_EPOCH"
 
 # Remove unwanted file
 rm $PACKAGES_DIR/*.wixpdb
